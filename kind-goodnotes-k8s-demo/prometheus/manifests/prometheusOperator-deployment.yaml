@@ -81,25 +81,6 @@ spec:
           runAsUser: 65532
           seccompProfile:
             type: RuntimeDefault
-      - name: debug
-        image: curlimages/curl:latest
-        command: ["/bin/sh"]
-        args: ["-c", "while true; do sleep 3600; done"]
-        resources:
-          requests:
-            cpu: 5m
-            memory: 16Mi
-          limits:
-            cpu: 10m
-            memory: 32Mi
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
-          runAsUser: 65534
-          capabilities:
-            drop:
-              - ALL
       nodeSelector:
         kubernetes.io/os: linux
       securityContext:

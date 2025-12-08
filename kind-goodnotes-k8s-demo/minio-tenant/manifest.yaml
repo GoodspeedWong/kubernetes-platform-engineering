@@ -1,0 +1,73 @@
+---
+# Source: tenant/templates/tenant-configuration.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: myminio-env-configuration
+type: Opaque
+stringData:
+  config.env: |-
+    export MINIO_ROOT_USER="${MINIO_ROOT_USER}"
+    export MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD}"
+---
+# Source: tenant/templates/checks.yaml
+# If an existing secret is used, do not set access-key and secret-key explicitly
+# (note that we allow the default settings in values.yaml)
+
+# If configuration.name is set and not the same as configSecret.name,
+# then we should raise an error and abort
+---
+# Source: tenant/templates/tenant.yaml
+apiVersion: minio.min.io/v2
+kind: Tenant
+metadata:
+  name: loki-minio-tenant
+  ## Optionally pass labels to be applied to the statefulset pods
+  labels:
+    app: minio
+spec:
+  image: "quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z"
+  imagePullPolicy: IfNotPresent
+  ## Secret with default environment variable configurations
+  configuration:
+    name: myminio-env-configuration
+  poolsMetadata:
+    annotations: {}
+    labels: {}
+  pools:
+    - servers: 4
+      name: pool-0
+      volumesPerServer: 4
+      volumeClaimTemplate:
+        metadata:
+          name: data
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 10Gi
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containerSecurityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+  mountPath: /export
+  subPath: /data
+  requestAutoCert: false
+  features:
+    bucketDNS: false
+    enableSFTP: false
+  podManagementPolicy: Parallel
+  prometheusOperator: false

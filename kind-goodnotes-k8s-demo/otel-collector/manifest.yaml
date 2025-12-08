@@ -47,7 +47,7 @@ data:
           network: {}
       filelog:
         include: [ /var/log/containers/*.log ]
-        start_at: beginning
+        start_at: end
         operators:
           - type: container
     processors:
@@ -195,9 +195,9 @@ data:
       prometheusremotewrite:
         endpoint: http://mimir-write.monitoring.svc:8080/api/v1/push
       loki:
-        endpoint: http://loki-gateway.monitoring.svc/loki/api/v1/push
+        endpoint: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
         headers:
-          X-Scope-OrgID: "fake"
+          X-Scope-OrgID: "self-monitoring"
       # 用于接收来自 Agent 的 metrics/logs 时先就地观测，之后可替换为 Mimir/Loki 等后端
       logging:
         verbosity: normal
@@ -252,18 +252,34 @@ spec:
             name: otlp-http
           - containerPort: 8888
             name: metrics
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 5
         resources:
           limits: { cpu: "1000m", memory: "1Gi" }
           requests: { cpu: "200m", memory: "256Mi" }
         volumeMounts:
           - name: config
             mountPath: /etc/otel
-        readinessProbe:
-          httpGet: { path: /, port: 13133 }
-          initialDelaySeconds: 5
-        livenessProbe:
-          httpGet: { path: /, port: 13133 }
-          initialDelaySeconds: 5
+      - name: debug
+        image: nicolaka/netshoot
+        command: ["sh", "-c", "sleep 100000000"]
+        stdin: true
+        tty: true
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "32Mi"
+          limits:
+            cpu: "100m"
+            memory: "64Mi"
       volumes:
         - name: config
           configMap:

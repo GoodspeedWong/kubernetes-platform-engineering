@@ -1,3 +1,25 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-k8sattributes
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-k8sattributes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-k8sattributes
+subjects:
+  - kind: ServiceAccount
+    name: otel
+    namespace: monitoring
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -25,10 +47,20 @@ data:
           network: {}
       filelog:
         include: [ /var/log/containers/*.log ]
-        start_at: beginning
+        start_at: end
         operators:
           - type: container
     processors:
+      k8sattributes:
+        auth_type: serviceAccount
+        filter:
+          node_from_env_var: K8S_NODE_NAME
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.pod.name
+            - k8s.container.name
+            - k8s.pod.uid
       memory_limiter:
         check_interval: 1s
         limit_percentage: 80
@@ -56,15 +88,15 @@ data:
       pipelines:
         metrics:
           receivers: [ hostmetrics ]
-          processors: [ memory_limiter, batch, attributes ]
+          processors: [ memory_limiter, k8sattributes, attributes, batch ]
           exporters: [ otlp, prometheus ]
         logs:
           receivers: [ filelog ]
-          processors: [ memory_limiter, batch, attributes ]
+          processors: [ memory_limiter, k8sattributes, attributes, batch ]
           exporters: [ otlp ]
         traces:
           receivers: [ otlp ]
-          processors: [ memory_limiter, batch, attributes ]
+          processors: [ memory_limiter, k8sattributes, attributes, batch ]
           exporters: [ otlp ]
 ---
 apiVersion: apps/v1
@@ -90,6 +122,11 @@ spec:
       - name: otelcol
         image: otel/opentelemetry-collector-contrib:0.103.0
         imagePullPolicy: IfNotPresent
+        env:
+          - name: K8S_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
         args: ["--config=/etc/otel/config.yaml"]
         ports:
           - containerPort: 4317 # OTLP gRPC（OpenTelemetry Protocol）
@@ -158,7 +195,9 @@ data:
       prometheusremotewrite:
         endpoint: http://mimir-write.monitoring.svc:8080/api/v1/push
       loki:
-        endpoint: http://loki-gateway.monitoring.svc:3100/loki/api/v1/push
+        endpoint: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+        headers:
+          X-Scope-OrgID: "self-monitoring"
       # 用于接收来自 Agent 的 metrics/logs 时先就地观测，之后可替换为 Mimir/Loki 等后端
       logging:
         verbosity: normal
@@ -213,18 +252,34 @@ spec:
             name: otlp-http
           - containerPort: 8888
             name: metrics
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 5
         resources:
           limits: { cpu: "1000m", memory: "1Gi" }
           requests: { cpu: "200m", memory: "256Mi" }
         volumeMounts:
           - name: config
             mountPath: /etc/otel
-        readinessProbe:
-          httpGet: { path: /, port: 13133 }
-          initialDelaySeconds: 5
-        livenessProbe:
-          httpGet: { path: /, port: 13133 }
-          initialDelaySeconds: 5
+      - name: debug
+        image: nicolaka/netshoot
+        command: ["sh", "-c", "sleep 100000000"]
+        stdin: true
+        tty: true
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "32Mi"
+          limits:
+            cpu: "100m"
+            memory: "64Mi"
       volumes:
         - name: config
           configMap:

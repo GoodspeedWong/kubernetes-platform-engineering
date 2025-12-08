@@ -1,0 +1,33 @@
+mode: standalone
+replicas: 1
+
+existingSecret: minio-creds
+rootUserKey: rootUser
+rootPasswordKey: rootPassword
+
+persistence:
+  enabled: true
+  size: 20Gi
+  storageClass: standard
+
+service:
+  type: ClusterIP
+
+consoleService:
+  type: ClusterIP
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits:   { cpu: 1,    memory: 1Gi }
+
+metrics:
+  serviceMonitor:
+    enabled: true
+
+buckets:
+  - name: loki
+    policy: none
+    purge: false
+  - name: tempo
+    policy: none
+    purge: false

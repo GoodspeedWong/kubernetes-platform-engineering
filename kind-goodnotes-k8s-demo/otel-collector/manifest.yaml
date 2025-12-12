@@ -192,6 +192,11 @@ data:
       batch:
         timeout: 5s
         send_batch_size: 8192
+      resource/loki_hints:
+        attributes:
+          - action: upsert
+            key: loki.resource.labels
+            value: k8s.cluster.name,k8s.namespace.name,k8s.pod.name,k8s.container.name,k8s.deployment.name,k8s.replicaset.name,service.name,service.namespace,deployment.environment
 
     exporters:
       otlp/tempo:
@@ -204,12 +209,6 @@ data:
         endpoint: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
         headers:
           X-Scope-OrgID: "self-monitoring"
-        labels:
-          cluster: attributes["k8s.cluster.name"]
-          namespace: attributes["k8s.namespace.name"]
-          pod: attributes["k8s.pod.name"]
-          container: attributes["k8s.container.name"]
-          service: attributes["service.name"]
       # 用于接收来自 Agent 的 metrics/logs 时先就地观测，之后可替换为 Mimir/Loki 等后端
       logging:
         verbosity: normal
@@ -230,7 +229,7 @@ data:
           exporters: [prometheusremotewrite, logging]
         logs:
           receivers: [otlp]
-          processors: [memory_limiter, batch]
+          processors: [memory_limiter, resource/loki_hints, batch]
           exporters: [loki, logging]
 ---
 apiVersion: apps/v1

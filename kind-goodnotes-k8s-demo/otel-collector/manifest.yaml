@@ -204,6 +204,12 @@ data:
         endpoint: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
         headers:
           X-Scope-OrgID: "self-monitoring"
+        labels:
+          cluster: attributes["k8s.cluster.name"]
+          namespace: attributes["k8s.namespace.name"]
+          pod: attributes["k8s.pod.name"]
+          container: attributes["k8s.container.name"]
+          service: attributes["service.name"]
       # 用于接收来自 Agent 的 metrics/logs 时先就地观测，之后可替换为 Mimir/Loki 等后端
       logging:
         verbosity: normal
@@ -248,7 +254,7 @@ spec:
       serviceAccountName: otel
       containers:
       - name: otelcol
-        image: otel/opentelemetry-collector-contrib:0.103.0
+        image: otel/opentelemetry-collector-contrib:0.110.0
         imagePullPolicy: IfNotPresent
         args: ["--config=/etc/otel/config.yaml"]
         ports:

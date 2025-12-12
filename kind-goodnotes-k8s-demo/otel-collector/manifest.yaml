@@ -88,7 +88,8 @@ data:
       prometheus:
         endpoint: 0.0.0.0:8889
     extensions:
-      health_check: {}
+      health_check:
+        endpoint: 0.0.0.0:13133
     service:
       extensions: [ health_check ]
       pipelines:
@@ -182,8 +183,10 @@ data:
     receivers:
       otlp:
         protocols:
-          grpc: {}
-          http: {}
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
 
     processors:
       memory_limiter:
@@ -214,7 +217,8 @@ data:
         verbosity: normal
 
     extensions:
-      health_check: {}
+      health_check:
+        endpoint: 0.0.0.0:13133
 
     service:
       extensions: [health_check]
@@ -230,7 +234,7 @@ data:
         logs:
           receivers: [otlp]
           processors: [memory_limiter, resource/loki_hints, batch]
-          exporters: [loki, logging]
+          exporters: [loki]
 ---
 apiVersion: apps/v1
 kind: Deployment

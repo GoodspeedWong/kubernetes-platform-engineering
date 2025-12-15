@@ -17,7 +17,9 @@ spec:
       namespace: monitoring
       port: web
   enableFeatures: []
-  externalLabels: {}
+  externalLabels:
+    cluster: kind-goodnotes-k8s-demo
+    prometheus: prometheus-k8s
   image: quay.io/prometheus/prometheus:v3.2.1
   nodeSelector:
     kubernetes.io/os: linux
@@ -33,6 +35,20 @@ spec:
   probeNamespaceSelector: {}
   probeSelector: {}
   replicas: 2
+  remoteWrite:
+    - url: http://mimir-distributor.monitoring.svc:8080/api/v1/push
+      headers:
+        X-Scope-OrgID: self-monitoring
+      remoteTimeout: 30s
+      queueConfig:
+        capacity: 25000
+        maxShards: 200
+        maxSamplesPerSend: 500
+        batchSendDeadline: 5s
+      writeRelabelConfigs:
+        - sourceLabels: [__name__]
+          regex: 'http_.*|grpc_.*|jvm_.*'
+          action: drop
   resources:
     requests:
       memory: 400Mi

@@ -1,154 +1,87 @@
-# DevOps-Kubernetes-GoodNotes
+# DevOps Kubernetes Playground
 
-A demo k8s cluster running locally with Github Actions CI workflows (self-hosted runner) covers cluster creation and load testing for following tasks.
+A local-first Kubernetes sandbox that provisions a multi-node [KinD](https://kind.sigs.k8s.io/) cluster, deploys sample services, and wires up observability, storage, and load testing. The manifests and scripts here mirror the layouts used in CI so you can iterate locally with the same structure as automation.
 
+## Features
 
-1. For each pull request to the default branch, trigger the CI workflow. (for example with GitHub Actions)
-2. Provision a multi-node (at least 2 nodes) Kubernetes cluster (you may use [KinD](https://kind.sigs.k8s.io/) to provision this cluster on the [CI runner](https://github.com/actions/runner-images/blob/main/images/linux/Ubuntu2204-Readme.md) (localhost))
-3. Deploy Ingress controller to handle incoming HTTP requests
-4. Create 2 [http-echo](https://github.com/hashicorp/http-echo) deployments, one serving a response of “bar” and another serving a response of “foo”.
-5. Configure cluster / ingress routing to send traffic for “bar” hostname to the bar deployment and “foo” hostname to the foo deployment on local cluster (i.e. route both [http://foo.localhost](http://foo.localhost/) and [http://bar.localhost](http://bar.localhost/)).
-6. Ensure the ingress and deployments are healthy before proceeding to the next step.
-7. Generate a load of randomized traffic for bar and foo hosts and capture the load testing result
-8. Post the output of the load testing result as comment on the GitHub Pull Request (automated the CI job). Depending on the report your load testing script generates, ideally you'd post stats for http request duration (avg, p90, p95, ...), % of http request failed, req/s handled.
+- **KinD topology** – 1 control plane + 3 workers with HTTP/HTTPS ports mapped to the host for ingress testing.
+- **Ingress routing** – NGINX Ingress Controller exposes hostname-based routing for demo services (`foo.localhost`, `bar.localhost`, `iris.localhost`).
+- **Demo applications** – simple `foo`/`bar` echo deployments and an `iris-sklearn-api` model-serving example with Dockerfile and training script.
+- **GitOps ready** – Argo CD manifests and values are included for templating and GitOps rollout trials.
+- **Observability** – Prometheus stack (with Grafana dashboards), Mimir, Loki, and an OTEL collector for metrics and logs.
+- **Load testing** – k6 configuration and a Python script to generate randomized traffic across ingress hosts.
+- **Object storage** – MinIO operator + tenant definitions for S3-compatible buckets inside the cluster.
 
-
-## Repository Structure
+## Repository layout
 
 ```text
 .
-├── .github/workflows           # Github Actions workflows for cluster creation and load testing
-├── goodnotes-k8s-demo          # cluster configuration
-├── kind-goodnotes-k8s-demo
-│   ├── apps                    # cluster workloads
-│   ├── ingress-controller      # NGINX Ingress Controller
-│   ├── namespaces              # Namespaces configuration
-│   └── prometheus              # Prometheus stack with Grafana for monitoring
-└── scripts                     # Scripts location
-
+├── README.md                     # This guide
+├── goodnotes-k8s-demo            # KinD cluster configuration (port mappings, node layout)
+├── iris-sklearn-api              # Sample ML API (Dockerfile, training + app code)
+├── kind-goodnotes-k8s-demo       # Kubernetes manifests and kustomize roots
+│   ├── apps/                     # Foo/Bar echo services and iris-sklearn ingress/service/deployment
+│   ├── argocd/                   # Argo CD Helm-rendered manifests and kustomization
+│   ├── gateway/                  # Example HTTP gateway definition
+│   ├── gateway-controller/       # Controller setup for gateway resources
+│   ├── ingress-controller/       # NGINX Ingress Controller manifests + ServiceMonitor
+│   ├── k6/                       # k6 load testing config
+│   ├── loki/                     # Loki manifests for log aggregation
+│   ├── mimir/                    # Mimir manifests for long-term metrics storage
+│   ├── minio/                    # MinIO buckets and policies
+│   ├── minio-operator/           # MinIO operator installation
+│   ├── minio-tenant/             # MinIO tenant configuration
+│   ├── namespaces/               # Namespace definitions used across the stack
+│   ├── otel-collector/           # OpenTelemetry collector deployment
+│   └── prometheus/               # Prometheus Operator stack (Grafana, Alertmanager, etc.)
+└── scripts
+    └── load-test.py              # Async HTTP load generator for foo/bar ingress paths
 ```
 
-## Access
+## Getting started locally
 
-[Prometheus Query UI](http://prometheus.localhost:8080)
+1. **Create the KinD cluster**
+   ```sh
+   kind create cluster --name goodnotes --config goodnotes-k8s-demo/cluster-config.yaml
+   ```
 
-[Grafana UI](http://grafana.localhost:8080)
+2. **Bootstrap namespaces and ingress**
+   ```sh
+   kubectl apply -k kind-goodnotes-k8s-demo/namespaces
+   kubectl apply -k kind-goodnotes-k8s-demo/ingress-controller
+   ```
 
-## Examples PRs:
+3. **Deploy core platform services** (pick and choose based on what you need)
+   ```sh
+   kubectl apply -k kind-goodnotes-k8s-demo/prometheus
+   kubectl apply -k kind-goodnotes-k8s-demo/mimir
+   kubectl apply -k kind-goodnotes-k8s-demo/loki
+   kubectl apply -k kind-goodnotes-k8s-demo/otel-collector
+   kubectl apply -k kind-goodnotes-k8s-demo/minio-operator
+   kubectl apply -k kind-goodnotes-k8s-demo/minio-tenant
+   ```
 
-[Cluster Creation](https://github.com/GoodspeedWong/DevOps-Kubernetes-GoodNotes/pull/1)
-[Apps replica update and load testing](https://github.com/GoodspeedWong/DevOps-Kubernetes-GoodNotes/pull/9)
+4. **Deploy sample workloads**
+   ```sh
+   kubectl apply -k kind-goodnotes-k8s-demo/apps/bar
+   kubectl apply -k kind-goodnotes-k8s-demo/apps/foo
+   kubectl apply -k kind-goodnotes-k8s-demo/apps/iris-sklearn-api
+   ```
 
+5. **Run load testing against ingress**
+   ```sh
+   python scripts/load-test.py 20000 50
+   ```
+   The script generates randomized traffic to `foo.localhost` and `bar.localhost` through the ingress controller and prints latency percentiles and error rates.
 
-## Cluster workloads provisions quickview by namespaces
+6. **Access dashboards and services**
+   - Prometheus: http://prometheus.localhost:8080
+   - Grafana: http://grafana.localhost:8080
+   - Iris API: http://iris.localhost/
+   - Echo services: http://foo.localhost/ and http://bar.localhost/
 
-### apps
-```sh
-➜  DevOps-Kubernetes-GoodNotes git:(main) ✗ k get all -n apps
-NAME                       READY   STATUS    RESTARTS   AGE
-pod/bar-5d84b94647-dm888   1/1     Running   0          29h
-pod/bar-5d84b94647-kr9lw   1/1     Running   0          24h
-pod/bar-5d84b94647-lgr2f   1/1     Running   0          16h
-pod/bar-5d84b94647-tf5pf   1/1     Running   0          16h
-pod/bar-5d84b94647-wfspj   1/1     Running   0          29h
-pod/bar-5d84b94647-zdxgj   1/1     Running   0          24h
-pod/foo-6b55bdf-f5sbf      1/1     Running   0          16h
-pod/foo-6b55bdf-fr7mz      1/1     Running   0          29h
-pod/foo-6b55bdf-lmxpr      1/1     Running   0          24h
-pod/foo-6b55bdf-lzwbq      1/1     Running   0          29h
-pod/foo-6b55bdf-mpgxs      1/1     Running   0          24h
-pod/foo-6b55bdf-mvf7g      1/1     Running   0          16h
+## Additional notes
 
-NAME          TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
-service/bar   ClusterIP   10.96.38.224   <none>        80/TCP    29h
-service/foo   ClusterIP   10.96.96.27    <none>        80/TCP    29h
-
-NAME                  READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/bar   6/6     6            6           29h
-deployment.apps/foo   6/6     6            6           29h
-
-NAME                             DESIRED   CURRENT   READY   AGE
-replicaset.apps/bar-5d84b94647   6         6         6       29h
-replicaset.apps/foo-6b55bdf      6         6         6       29h
-➜  DevOps-Kubernetes-GoodNotes git:(main) ✗ 
-```
-
-### ingress-nginx
-```sh
-➜  DevOps-Kubernetes-GoodNotes git:(main) ✗ k get all -n ingress-nginx
-NAME                                            READY   STATUS      RESTARTS   AGE
-pod/ingress-nginx-admission-create-jztqr        0/1     Completed   0          28h
-pod/ingress-nginx-admission-patch-fj4l4         0/1     Completed   0          28h
-pod/ingress-nginx-controller-78d7c886bd-sm8rg   1/1     Running     0          26h
-
-NAME                                         TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
-service/ingress-nginx-controller             LoadBalancer   10.96.150.77    <pending>     80:31688/TCP,443:32093/TCP   28h
-service/ingress-nginx-controller-admission   ClusterIP      10.96.194.144   <none>        443/TCP                      28h
-
-NAME                                       READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/ingress-nginx-controller   1/1     1            1           28h
-
-NAME                                                  DESIRED   CURRENT   READY   AGE
-replicaset.apps/ingress-nginx-controller-76666fb69    0         0         0       28h
-replicaset.apps/ingress-nginx-controller-78d7c886bd   1         1         1       26h
-
-NAME                                       STATUS     COMPLETIONS   DURATION   AGE
-job.batch/ingress-nginx-admission-create   Complete   1/1           2m14s      28h
-job.batch/ingress-nginx-admission-patch    Complete   1/1           16m        28h
-➜  DevOps-Kubernetes-GoodNotes git:(main) ✗  
-```
-
-### monitoring
-```sh
-➜  DevOps-Kubernetes-GoodNotes git:(main) ✗ k get all -n monitoring
-NAME                                       READY   STATUS    RESTARTS   AGE
-pod/alertmanager-main-0                    2/2     Running   0          18h
-pod/alertmanager-main-1                    2/2     Running   0          18h
-pod/alertmanager-main-2                    2/2     Running   0          18h
-pod/blackbox-exporter-78cc978f77-ppvxr     3/3     Running   0          18h
-pod/grafana-5c5f5b469f-w2fvh               1/1     Running   0          18h
-pod/kube-state-metrics-5f96f94459-4qbv5    3/3     Running   0          18h
-pod/node-exporter-6vrk7                    2/2     Running   0          18h
-pod/node-exporter-9t22x                    2/2     Running   0          18h
-pod/node-exporter-f6rd4                    2/2     Running   0          18h
-pod/node-exporter-nhtm8                    2/2     Running   0          18h
-pod/prometheus-adapter-599c88b6c4-dckz7    1/1     Running   0          18h
-pod/prometheus-adapter-599c88b6c4-frzt2    1/1     Running   0          18h
-pod/prometheus-k8s-0                       2/2     Running   0          18h
-pod/prometheus-k8s-1                       2/2     Running   0          18h
-pod/prometheus-operator-76cf594d46-ctrmr   3/3     Running   0          18h
-
-NAME                            TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
-service/alertmanager-main       ClusterIP   10.96.205.196   <none>        9093/TCP,8080/TCP            18h
-service/alertmanager-operated   ClusterIP   None            <none>        9093/TCP,9094/TCP,9094/UDP   18h
-service/blackbox-exporter       ClusterIP   10.96.44.42     <none>        9115/TCP,19115/TCP           18h
-service/grafana                 ClusterIP   10.96.11.146    <none>        80/TCP,3000/TCP              18h
-service/kube-state-metrics      ClusterIP   None            <none>        8443/TCP,9443/TCP            18h
-service/node-exporter           ClusterIP   None            <none>        9100/TCP                     18h
-service/prometheus-adapter      ClusterIP   10.96.115.254   <none>        443/TCP                      18h
-service/prometheus-k8s          ClusterIP   10.96.46.71     <none>        9090/TCP,8080/TCP            18h
-service/prometheus-operated     ClusterIP   None            <none>        9090/TCP                     18h
-service/prometheus-operator     ClusterIP   None            <none>        8443/TCP                     18h
-
-NAME                           DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR            AGE
-daemonset.apps/node-exporter   4         4         4       4            4           kubernetes.io/os=linux   18h
-
-NAME                                  READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/blackbox-exporter     1/1     1            1           18h
-deployment.apps/grafana               1/1     1            1           18h
-deployment.apps/kube-state-metrics    1/1     1            1           18h
-deployment.apps/prometheus-adapter    2/2     2            2           18h
-deployment.apps/prometheus-operator   1/1     1            1           18h
-
-NAME                                             DESIRED   CURRENT   READY   AGE
-replicaset.apps/blackbox-exporter-78cc978f77     1         1         1       18h
-replicaset.apps/grafana-5c5f5b469f               1         1         1       18h
-replicaset.apps/kube-state-metrics-5f96f94459    1         1         1       18h
-replicaset.apps/prometheus-adapter-599c88b6c4    2         2         2       18h
-replicaset.apps/prometheus-operator-76cf594d46   1         1         1       18h
-
-NAME                                 READY   AGE
-statefulset.apps/alertmanager-main   3/3     18h
-statefulset.apps/prometheus-k8s      2/2     18h
-➜  DevOps-Kubernetes-GoodNotes git:(main) ✗ 
-```
+- Every manifest set under `kind-goodnotes-k8s-demo/` is organized as a kustomize root so you can `kubectl apply -k` individual stacks during experimentation.
+- The `iris-sklearn-api` directory contains a standalone Docker build path (`docker build -t iris-sklearn-api:local .`) that you can push to a registry referenced by the Kubernetes deployment manifests.
+- Example CI artifacts and load-testing PRs from the original demo remain linked for reference in case you want to replicate the automated pipeline locally.

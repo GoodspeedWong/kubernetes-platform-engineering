@@ -1,0 +1,70 @@
+# ========== Tempo Distributed Helm Values ==========
+
+# Object storage for trace blocks (S3 compatible MinIO)
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: "tempo-traces"
+      endpoint: "loki-minio-tenant-hl.monitoring.svc.cluster.local:9000"
+      access_key: "x"
+      secret_key: "x"
+      insecure: true
+    # tuning pool for ingestion
+    pool:
+      max_workers: 200
+      queue_depth: 8000
+
+# Enable distributed receivers — OTLP (gRPC + HTTP)
+# Aligns with your OTel Collector OTLP outputs
+traces:
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: true
+  zipkin:
+    enabled: false
+  jaeger:
+    thriftHttp:
+      enabled: false
+  opencensus:
+    enabled: false
+
+# Scale microservices — match to your env size
+distributor:
+  replicaCount: 2
+ingester:
+  replicaCount: 2
+querier:
+  replicaCount: 2
+queryFrontend:
+  replicaCount: 1
+compactor:
+  replicaCount: 1
+
+# Optional embedded MinIO for testing (disabled since you already have MinIO)
+minio:
+  enabled: false
+
+# Metrics generator — disabled by default,
+# enable only if you want exemplars & metrics from traces
+metricsGenerator:
+  enabled: false
+
+# Basic resource defaults (can adjust per workload)
+resources:
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+  requests:
+    cpu: "200m"
+    memory: "256Mi"
+
+# Annotations on Tempo services (prometheus scraping etc)
+service:
+  annotations: {}
+
+# Extra args so you can expand config with env vars if needed
+extraArgs:
+  - "-config.expand-env=true"

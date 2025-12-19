@@ -1,0 +1,72 @@
+name: build-and-deploy
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "iris-sklearn-api/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: [self-hosted, macOS, ARM64]
+
+    env:
+      IMAGE_NAME: iris-sklearn-api
+      KIND_CLUSTER_NAME: goodnotes-k8s-demo
+      SERVICE_DIR: iris-sklearn-api
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 必须，不然 git commit 会翻车
+
+      - name: Read current version
+        id: version
+        working-directory: ${{ env.SERVICE_DIR }}
+        run: |
+          VERSION=$(cat VERSION)
+          echo "current_version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump patch version
+        id: bump
+        working-directory: ${{ env.SERVICE_DIR }}
+        run: |
+          VERSION=${{ steps.version.outputs.current_version }}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          NEW_VERSION="$MAJOR.$MINOR.$((PATCH+1))"
+          echo "$NEW_VERSION" > VERSION
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Commit bumped version
+        if: ${{ !env.ACT }}
+        working-directory: ${{ env.SERVICE_DIR }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add VERSION
+          git commit -m "chore: bump version to v${{ steps.bump.outputs.new_version }}"
+          git push
+
+      - name: Build Docker image
+        working-directory: ${{ env.SERVICE_DIR }}
+        run: |
+          docker build \
+            -t $IMAGE_NAME:${{ steps.bump.outputs.new_version }} \
+            -t $IMAGE_NAME:latest \
+            .
+
+      - name: Load image into kind nodes
+        if: ${{ !env.ACT }}
+        run: |
+          kind load docker-image \
+            $IMAGE_NAME:${{ steps.bump.outputs.new_version }} \
+            --name $KIND_CLUSTER_NAME
+
+      - name: Verify image in cluster
+        run: |
+          docker images | grep $IMAGE_NAME

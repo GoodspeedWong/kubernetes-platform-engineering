@@ -3,3 +3,8 @@ uvicorn[standard]
 scikit-learn
 joblib
 numpy
+
+opentelemetry-sdk
+opentelemetry-exporter-otlp
+opentelemetry-instrumentation-fastapi
+opentelemetry-exporter-otlp-proto-http

@@ -6,6 +6,11 @@ on:
     paths:
       - "iris-sklearn-api/**"
 
+  push:
+    branches: [ main ]
+    paths:
+      - "iris-sklearn-api/**"
+
 permissions:
   contents: read
   pull-requests: write
@@ -43,7 +48,7 @@ jobs:
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Commit bumped version
-        if: ${{ !env.ACT }}
+        if: github.event_name == 'push' && !env.ACT
         working-directory: ${{ env.SERVICE_DIR }}
         run: |
           git config user.name "github-actions"

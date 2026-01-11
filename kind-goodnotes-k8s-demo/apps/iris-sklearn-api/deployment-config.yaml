@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: iris-sklearn-api:local
+          image: iris-sklearn-api:0.1.4
           ports:
             - containerPort: 8000
           readinessProbe:

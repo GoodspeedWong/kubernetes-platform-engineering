@@ -1,0 +1,4 @@
+resources:
+  - standard-install.yaml
+  - gatewayclass.yaml
+  - gateway.yaml

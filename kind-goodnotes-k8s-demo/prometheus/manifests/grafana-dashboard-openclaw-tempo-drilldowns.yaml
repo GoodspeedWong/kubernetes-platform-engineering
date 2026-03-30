@@ -1,0 +1,521 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-openclaw-tempo-drilldowns
+  namespace: monitoring
+data:
+  openclaw-tempo-drilldowns.json: |-
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "datasource": null,
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 20
+          },
+          "id": 10,
+          "options": {
+            "content": "### DB Drilldown Recipes\n\nUse these TraceQL searches when business flow reaches Postgres but outcomes still look wrong.\n\n1. Reanalyze -> DB writes\n- `{ resource.service.name = \"trading-core\" && name = \"trading_core.reanalyze\" }`\n- `{ resource.service.name = \"trading-core\" && name =~ \"db\\\\..*\" && span.job_name = \"daily-analysis-and-selection\" }`\n- `{ resource.service.name = \"trading-core\" && name =~ \"db\\\\..*\" && span.db.table = \"summary_snapshots\" }`\n\n2. Sampling -> DB writes\n- `{ span.job_name = \"trading_day_sampling\" && resource.service.name = \"trading-core\" && name =~ \"db\\\\..*\" }`\n- `{ span.job_name = \"trading_day_sampling\" && name = \"db.upsert_summary\" }`\n- `{ span.job_name = \"trading_day_sampling\" && name = \"db.upsert_daily_bars\" }`\n- `{ span.job_name = \"trading_day_sampling\" && name = \"db.archive_market_data_payload\" }`\n\n3. Inspect these DB span attributes first\n- `db.operation`\n- `db.statement.name`\n- `db.table` / `db.tables`\n- `provider`\n- `trade_date`\n- `as_of_date`\n- `job_name`\n- `actor`\n\nInterpretation rule:\n- DB spans should appear as children of the existing root business trace. If they are missing entirely, suspect missing trace context or an uninstrumented repository path before blaming Tempo.",
+            "mode": "markdown"
+          },
+          "title": "DB Writes -> Trace Drilldown",
+          "type": "text"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "index": 0,
+                      "text": "Down"
+                    },
+                    "1": {
+                      "color": "green",
+                      "index": 1,
+                      "text": "Up"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "expr": "max(kube_pod_status_ready{namespace=\"monitoring\",pod=~\"tempo-query-frontend.*\",condition=\"true\"})",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Tempo Query Frontend",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "index": 0,
+                      "text": "Down"
+                    },
+                    "1": {
+                      "color": "green",
+                      "index": 1,
+                      "text": "Up"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "expr": "max(kube_pod_status_ready{namespace=\"monitoring\",pod=~\"otel-gateway.*\",condition=\"true\"})",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "OTel Gateway",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "index": 0,
+                      "text": "Down"
+                    },
+                    "1": {
+                      "color": "green",
+                      "index": 1,
+                      "text": "Up"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 0
+          },
+          "id": 3,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "expr": "max(kube_pod_status_ready{namespace=\"$namespace\",pod=~\"trading-core.*\",condition=\"true\"})",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Tracing Root: Trading Core",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "index": 0,
+                      "text": "Down"
+                    },
+                    "1": {
+                      "color": "green",
+                      "index": 1,
+                      "text": "Up"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 0
+          },
+          "id": 4,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "expr": "max(kube_pod_status_ready{namespace=\"$namespace\",pod=~\"agent-coordinator.*\",condition=\"true\"})",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Tracing Root: Agent Coordinator",
+          "type": "stat"
+        },
+        {
+          "datasource": null,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 4
+          },
+          "id": 5,
+          "options": {
+            "content": "### Tempo Datasource\n\n- Name: `tempo`\n- Live uid: `ef78vob79qkn4b`\n- URL: `http://tempo-query-frontend.monitoring.svc.cluster.local:3200`\n\nUse Explore with Tempo to search OpenClaw spans by:\n- `service.name`\n- `provider`\n- `trade_date`\n- `job_name`\n- `agent_name`\n- `readiness_state`",
+            "mode": "markdown"
+          },
+          "title": "Tempo Datasource",
+          "type": "text"
+        },
+        {
+          "datasource": null,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 4
+          },
+          "id": 6,
+          "options": {
+            "content": "### TraceQL Quick Recipes\n\n- `{ resource.service.name = \"trading-core\" }`\n- `{ resource.service.name = \"market-data-adapter\" && span.provider = \"akshare\" }`\n- `{ resource.service.name = \"agent-coordinator\" && span.agent_name = \"stock-selector-agent\" }`\n- `{ span.job_name = \"trading_day_sampling\" && span.provider = \"akshare\" }`\n- `{ span.job_name = \"trading_day_recap\" && span.provider = \"tushare_pro\" }`\n- `{ span.readiness_state = \"blocked\" }`\n\n### LLM Call Path\n\n- `{ name = \"agent.market_analyst.invoke_llm\" } >> { name = \"llm.http_request\" }`\n- `{ name = \"agent.stock_selector.invoke_llm\" } >> { name = \"llm.http_request\" }`\n- `{ name = \"llm.normalize_response\" && span.normalize_succeeded = false }`\n- `{ name = \"llm.http_request\" && span.http.status_class != \"2xx\" }`\n- `{ name = \"llm.http_request\" && span.usage.total_tokens > 500 }`\n\nRecommended attrs to inspect first:\n- `agent_name`\n- `model_name`\n- `http.status_code`\n- `usage.total_tokens`\n- `normalize_succeeded`\n\nOperational rule:\n- `blocked` / `halted` are business outcomes, not infrastructure failures.",
+            "mode": "markdown"
+          },
+          "title": "TraceQL Recipes",
+          "type": "text"
+        },
+        {
+          "datasource": null,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 12
+          },
+          "id": 8,
+          "options": {
+            "content": "### Sampling -> Readiness Drilldown\n\nUse these TraceQL searches in **Explore -> Tempo** when provider validation looks unstable.\n\n1. Sampling root jobs\n- `{ span.job_name = \"trading_day_sampling\" && span.provider = \"akshare\" }`\n- `{ span.job_name = \"trading_day_sampling\" && span.provider = \"tushare_pro\" }`\n\n2. Provider fetch spans\n- `{ resource.service.name = \"market-data-adapter\" && span.provider = \"akshare\" && name =~ \"provider\\\\..*\\\\.fetch_.*\" }`\n- `{ resource.service.name = \"market-data-adapter\" && span.provider = \"tushare_pro\" && name =~ \"provider\\\\..*\\\\.fetch_.*\" }`\n\n3. Readiness outcomes\n- `{ span.job_name = \"trading_day_sampling\" && span.readiness_state = \"blocked\" }`\n- `{ span.job_name = \"trading_day_sampling\" && span.readiness_state = \"validation_only\" }`\n- `{ span.job_name = \"trading_day_sampling\" && span.readiness_state = \"controlled_validation_ready\" }`\n\nInspect these attributes first:\n- `provider`\n- `trade_date`\n- `sample_mode`\n- `readiness_state`\n- `chain_status`\n- `chain_generated_intents`\n\nInterpretation rule:\n- strong sampling + weak readiness usually means the validation chain was blocked, not that OTLP/Tempo failed.",
+            "mode": "markdown"
+          },
+          "title": "Sampling -> Readiness",
+          "type": "text"
+        },
+        {
+          "datasource": null,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 12
+          },
+          "id": 9,
+          "options": {
+            "content": "### Reanalyze -> Agent Pipeline Drilldown\n\nUse these TraceQL searches when AI behavior looks conservative or inconsistent.\n\n1. Trading core orchestration\n- `{ resource.service.name = \"trading-core\" && name = \"trading_core.reanalyze\" }`\n- `{ resource.service.name = \"trading-core\" && name = \"trading_core.run_agent_pipeline\" }`\n\n2. Agent coordinator spans\n- `{ resource.service.name = \"agent-coordinator\" && span.agent_name = \"market-analyst-agent\" }`\n- `{ resource.service.name = \"agent-coordinator\" && span.agent_name = \"stock-selector-agent\" }`\n- `{ resource.service.name = \"agent-coordinator\" && span.agent_name = \"risk-manager-agent\" }`\n\n3. Failure-closed business outcomes\n- `{ span.recommendation_state = \"observe_only\" }`\n- `{ span.readiness_state = \"blocked\" }`\n- `{ span.halt_reason =~ \".*coverage.*\" }`\n\nInspect these attributes first:\n- `agent_name`\n- `provider`\n- `trade_date`\n- `recommendation_state`\n- `llm_confidence`\n- `fallback_used`\n- `halt_reason`\n\nInterpretation rule:\n- `blocked` / `halted` / `observe_only` are usually business guardrails, not trace pipeline failures.",
+            "mode": "markdown"
+          },
+          "title": "Reanalyze -> Agent Pipeline",
+          "type": "text"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 18,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 4,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 0
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 28
+          },
+          "id": 7,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "expr": "max(kube_pod_status_ready{namespace=\"$namespace\",pod=~\"trading-core.*\",condition=\"true\"})",
+              "legendFormat": "trading-core",
+              "refId": "A"
+            },
+            {
+              "expr": "max(kube_pod_status_ready{namespace=\"$namespace\",pod=~\"market-data-adapter.*\",condition=\"true\"})",
+              "legendFormat": "market-data-adapter",
+              "refId": "B"
+            },
+            {
+              "expr": "max(kube_pod_status_ready{namespace=\"$namespace\",pod=~\"agent-coordinator.*\",condition=\"true\"})",
+              "legendFormat": "agent-coordinator",
+              "refId": "C"
+            },
+            {
+              "expr": "max(kube_pod_status_ready{namespace=\"$namespace\",pod=~\"portfolio-watcher.*\",condition=\"true\"})",
+              "legendFormat": "portfolio-watcher",
+              "refId": "D"
+            },
+            {
+              "expr": "max(kube_pod_status_ready{namespace=\"$namespace\",pod=~\"notification-gateway.*\",condition=\"true\"})",
+              "legendFormat": "notification-gateway",
+              "refId": "E"
+            },
+            {
+              "expr": "max(kube_pod_status_ready{namespace=\"$namespace\",pod=~\"execution-agent.*\",condition=\"true\"})",
+              "legendFormat": "execution-agent",
+              "refId": "F"
+            }
+          ],
+          "title": "Trace-producing Service Availability",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": [
+        "openclaw",
+        "tempo",
+        "tracing"
+      ],
+      "templating": {
+        "list": [
+          {
+            "current": {
+              "selected": true,
+              "text": "apps",
+              "value": "apps"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "label": "Namespace",
+            "name": "namespace",
+            "options": [
+              {
+                "selected": true,
+                "text": "apps",
+                "value": "apps"
+              }
+            ],
+            "query": "apps",
+            "skipUrlSync": false,
+            "type": "constant"
+          }
+        ]
+      },
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "OpenClaw Tempo Drilldowns",
+      "uid": "openclaw-tempo",
+      "version": 1,
+      "weekStart": ""
+    }

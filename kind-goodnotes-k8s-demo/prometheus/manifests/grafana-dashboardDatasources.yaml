@@ -21,7 +21,35 @@ stringData:
                 "type": "prometheus",
                 "url": "http://prometheus-k8s.monitoring.svc:9090",
                 "version": 1
+            },
+            {
+                "access": "proxy",
+                "editable": false,
+                "name": "tempo",
+                "orgId": 1,
+                "type": "tempo",
+                "url": "http://tempo-query-frontend.monitoring.svc.cluster.local:3200",
+                "version": 1
+            },
+            {
+                "access": "proxy",
+                "editable": false,
+                "name": "openclaw-postgres",
+                "orgId": 1,
+                "type": "grafana-postgresql-datasource",
+                "uid": "openclaw-postgres",
+                "url": "postgres.apps.svc.cluster.local:5432",
+                "user": "trading_app",
+                "jsonData": {
+                    "database": "trading_openclaw",
+                    "postgresVersion": 1500,
+                    "sslmode": "disable",
+                    "timescaledb": false
+                },
+                "secureJsonData": {
+                    "password": "local-dev-password"
+                },
+                "version": 1
             }
         ]
     }
-type: Opaque

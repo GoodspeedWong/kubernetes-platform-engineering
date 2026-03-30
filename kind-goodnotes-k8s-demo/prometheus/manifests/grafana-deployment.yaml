@@ -166,6 +166,27 @@ spec:
         - mountPath: /etc/grafana
           name: grafana-config
           readOnly: false
+        - mountPath: /grafana-dashboard-definitions/0/openclaw-trading-overview
+          name: grafana-dashboard-openclaw-trading-overview
+          readOnly: false
+        - mountPath: /grafana-dashboard-definitions/0/openclaw-monitoring-storage-risk
+          name: grafana-dashboard-openclaw-monitoring-storage-risk
+          readOnly: false
+        - mountPath: /grafana-dashboard-definitions/0/openclaw-postgres-overview
+          name: grafana-dashboard-openclaw-postgres-overview
+          readOnly: false
+        - mountPath: /grafana-dashboard-definitions/0/openclaw-postgres-statement-drilldown
+          name: grafana-dashboard-openclaw-postgres-statement-drilldown
+          readOnly: false
+        - mountPath: /grafana-dashboard-definitions/0/openclaw-data-core-pipeline
+          name: grafana-dashboard-openclaw-data-core-pipeline
+          readOnly: false
+        - mountPath: /grafana-dashboard-definitions/0/openclaw-trace-operations
+          name: grafana-dashboard-openclaw-trace-operations
+          readOnly: false
+        - mountPath: /grafana-dashboard-definitions/0/openclaw-tempo-drilldowns
+          name: grafana-dashboard-openclaw-tempo-drilldowns
+          readOnly: false
       nodeSelector:
         kubernetes.io/os: linux
       securityContext:
@@ -283,6 +304,27 @@ spec:
       - configMap:
           name: grafana-dashboard-workload-total
         name: grafana-dashboard-workload-total
+      - configMap:
+          name: grafana-dashboard-openclaw-trading-overview
+        name: grafana-dashboard-openclaw-trading-overview
+      - configMap:
+          name: grafana-dashboard-openclaw-monitoring-storage-risk
+        name: grafana-dashboard-openclaw-monitoring-storage-risk
+      - configMap:
+          name: grafana-dashboard-openclaw-postgres-overview
+        name: grafana-dashboard-openclaw-postgres-overview
+      - configMap:
+          name: grafana-dashboard-openclaw-postgres-statement-drilldown
+        name: grafana-dashboard-openclaw-postgres-statement-drilldown
+      - configMap:
+          name: grafana-dashboard-openclaw-data-core-pipeline
+        name: grafana-dashboard-openclaw-data-core-pipeline
+      - configMap:
+          name: grafana-dashboard-openclaw-trace-operations
+        name: grafana-dashboard-openclaw-trace-operations
+      - configMap:
+          name: grafana-dashboard-openclaw-tempo-drilldowns
+        name: grafana-dashboard-openclaw-tempo-drilldowns
       - name: grafana-config
         secret:
           secretName: grafana-config

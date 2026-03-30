@@ -35,3 +35,74 @@ kubectl delete --ignore-not-found=true -f manifests/ -f manifests/setup
 [Prometheus Query UI](http://prometheus.localhost:8080)
 
 [Grafana UI](http://grafana.localhost:8080)
+
+## OpenClaw dashboards
+
+This stack also carries two OpenClaw business dashboards:
+- `openclaw-trading-overview`
+- `openclaw-data-core-pipeline`
+
+They are sourced from the `trading-openclaw` repository and copied in as concrete ConfigMap manifests.
+
+## OpenClaw dashboards
+
+This stack also carries three OpenClaw dashboards:
+- `openclaw-trading-overview`
+- `openclaw-data-core-pipeline`
+- `openclaw-trace-operations`
+
+They are sourced from the `trading-openclaw` repository and copied in as concrete ConfigMap manifests.
+
+## OpenClaw dashboards
+
+This stack also carries four OpenClaw dashboards:
+- `openclaw-trading-overview`
+- `openclaw-data-core-pipeline`
+- `openclaw-trace-operations`
+- `openclaw-tempo-drilldowns`
+
+They are sourced from the `trading-openclaw` repository and copied in as concrete ConfigMap manifests.
+
+## OpenClaw tracing datasource
+
+The Grafana datasources definition now includes a `tempo` datasource so OpenClaw trace dashboards can use Tempo as source-of-truth instead of relying on manual UI-only datasource setup.
+
+## OpenClaw dashboards
+
+This stack also carries five OpenClaw dashboards:
+- `openclaw-trading-overview`
+- `openclaw-postgres-overview`
+- `openclaw-data-core-pipeline`
+- `openclaw-trace-operations`
+- `openclaw-tempo-drilldowns`
+
+They are sourced from the `trading-openclaw` repository and copied in as concrete ConfigMap manifests.
+
+## OpenClaw dashboards
+
+This stack also carries five OpenClaw dashboards:
+- `openclaw-trading-overview`
+- `openclaw-postgres-overview`
+- `openclaw-postgres-statement-drilldown`
+- `openclaw-data-core-pipeline`
+- `openclaw-trace-operations`
+- `openclaw-tempo-drilldowns`
+
+They are sourced from the `trading-openclaw` repository and copied in as concrete ConfigMap manifests.
+
+## OpenClaw Postgres datasource
+
+Grafana also provisions an `openclaw-postgres` datasource that connects directly to `postgres.apps.svc.cluster.local:5432` for SQL drilldown dashboards backed by `pg_stat_statements`.
+
+## OpenClaw dashboards
+
+This stack also carries five OpenClaw dashboards:
+- `openclaw-trading-overview`
+- `openclaw-monitoring-storage-risk`
+- `openclaw-postgres-overview`
+- `openclaw-postgres-statement-drilldown`
+- `openclaw-data-core-pipeline`
+- `openclaw-trace-operations`
+- `openclaw-tempo-drilldowns`
+
+They are sourced from the `trading-openclaw` repository and copied in as concrete ConfigMap manifests.

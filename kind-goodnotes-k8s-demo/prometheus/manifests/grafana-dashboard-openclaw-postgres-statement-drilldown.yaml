@@ -1,0 +1,162 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-openclaw-postgres-statement-drilldown
+  namespace: monitoring
+data:
+  openclaw-postgres-statement-drilldown.json: |-
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "datasource": null,
+          "gridPos": {
+            "h": 5,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "content": "### PostgreSQL Statement Drilldown\n\nThis dashboard reads directly from `pg_stat_statements` through the Grafana PostgreSQL datasource `openclaw-postgres`.\n\nNotes:\n- Panels are ordered by practical triage priority: `Total Time`, `Mean Time`, `Calls`, then `Rows`.\n- SQL is normalized by PostgreSQL, so literals may appear parameterized.\n- Long statements are truncated for readability.\n- Use `Query ID` to correlate with the Prometheus-based `OpenClaw Postgres Overview` dashboard.",
+            "mode": "markdown"
+          },
+          "title": "How To Read This",
+          "type": "text"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 5
+          },
+          "id": 2,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "select row_number() over (order by total_exec_time desc) as \"Rank\",\n       queryid::text as \"Query ID\",\n       left(regexp_replace(query, '[[:space:]]+', ' ', 'g'), 220) as \"Query\",\n       calls as \"Calls\",\n       round(total_exec_time::numeric, 2) as \"Total ms\",\n       round(mean_exec_time::numeric, 2) as \"Mean ms\",\n       rows as \"Rows\"\nfrom pg_stat_statements\nwhere dbid = (select oid from pg_database where datname = current_database())\norder by total_exec_time desc\nlimit 20;",
+              "refId": "A"
+            }
+          ],
+          "title": "Top Statements by Total Time",
+          "type": "table"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 5
+          },
+          "id": 3,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "select row_number() over (order by mean_exec_time desc) as \"Rank\",\n       queryid::text as \"Query ID\",\n       left(regexp_replace(query, '[[:space:]]+', ' ', 'g'), 220) as \"Query\",\n       calls as \"Calls\",\n       round(mean_exec_time::numeric, 2) as \"Mean ms\",\n       round(total_exec_time::numeric, 2) as \"Total ms\",\n       rows as \"Rows\"\nfrom pg_stat_statements\nwhere dbid = (select oid from pg_database where datname = current_database())\norder by mean_exec_time desc\nlimit 20;",
+              "refId": "A"
+            }
+          ],
+          "title": "Slowest Statements by Mean Time",
+          "type": "table"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 14
+          },
+          "id": 4,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "select row_number() over (order by calls desc) as \"Rank\",\n       queryid::text as \"Query ID\",\n       left(regexp_replace(query, '[[:space:]]+', ' ', 'g'), 220) as \"Query\",\n       calls as \"Calls\",\n       round(total_exec_time::numeric, 2) as \"Total ms\",\n       round(mean_exec_time::numeric, 2) as \"Mean ms\",\n       rows as \"Rows\"\nfrom pg_stat_statements\nwhere dbid = (select oid from pg_database where datname = current_database())\norder by calls desc\nlimit 20;",
+              "refId": "A"
+            }
+          ],
+          "title": "Top Statements by Calls",
+          "type": "table"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 14
+          },
+          "id": 5,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "select row_number() over (order by rows desc) as \"Rank\",\n       queryid::text as \"Query ID\",\n       left(regexp_replace(query, '[[:space:]]+', ' ', 'g'), 220) as \"Query\",\n       rows as \"Rows\",\n       calls as \"Calls\",\n       round(total_exec_time::numeric, 2) as \"Total ms\",\n       round(mean_exec_time::numeric, 2) as \"Mean ms\"\nfrom pg_stat_statements\nwhere dbid = (select oid from pg_database where datname = current_database())\norder by rows desc\nlimit 20;",
+              "refId": "A"
+            }
+          ],
+          "title": "Top Statements by Rows",
+          "type": "table"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": [
+        "openclaw",
+        "postgres",
+        "sql"
+      ],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "OpenClaw Postgres Statement Drilldown",
+      "uid": "openclaw-postgres-statements",
+      "version": 3,
+      "weekStart": ""
+    }

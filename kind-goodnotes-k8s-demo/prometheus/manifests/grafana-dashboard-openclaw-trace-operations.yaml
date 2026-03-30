@@ -1,0 +1,584 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-openclaw-trace-operations
+  namespace: monitoring
+data:
+  openclaw-trace-operations.json: |-
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "index": 0,
+                      "text": "Down"
+                    },
+                    "1": {
+                      "color": "green",
+                      "index": 1,
+                      "text": "Up"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(up{namespace=\"$namespace\",service=\"trading-core\"})",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Trading Core",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "index": 0,
+                      "text": "Down"
+                    },
+                    "1": {
+                      "color": "green",
+                      "index": 1,
+                      "text": "Up"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(up{namespace=\"$namespace\",service=\"market-data-adapter\"})",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Market Data Adapter",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "index": 0,
+                      "text": "Down"
+                    },
+                    "1": {
+                      "color": "green",
+                      "index": 1,
+                      "text": "Up"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 0
+          },
+          "id": 3,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(up{namespace=\"$namespace\",service=\"agent-coordinator\"})",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Agent Coordinator",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "index": 0,
+                      "text": "Down"
+                    },
+                    "1": {
+                      "color": "green",
+                      "index": 1,
+                      "text": "Up"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 0
+          },
+          "id": 4,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(up{namespace=\"$namespace\",service=\"portfolio-watcher\"})",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Portfolio Watcher",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "index": 0,
+                      "text": "Down"
+                    },
+                    "1": {
+                      "color": "green",
+                      "index": 1,
+                      "text": "Up"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 0
+          },
+          "id": 5,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(up{namespace=\"$namespace\",service=\"notification-gateway\"})",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Notification Gateway",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "index": 0,
+                      "text": "Down"
+                    },
+                    "1": {
+                      "color": "green",
+                      "index": 1,
+                      "text": "Up"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 0
+          },
+          "id": 6,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(up{namespace=\"$namespace\",service=\"execution-agent\"})",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Execution Agent",
+          "type": "stat"
+        },
+        {
+          "datasource": null,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 4
+          },
+          "id": 7,
+          "options": {
+            "content": "### Trace Entry Points\n\nUse **Explore -> Tempo** to search by service and attributes.\n\nCore roots:\n- `http GET/POST ...` on `trading-core`\n- `job.market_data_ingest`\n- `job.agent_pipeline`\n- `job.trading_day_sampling`\n- `job.trading_day_recap`\n- `job.portfolio_watch`\n- `job.notification_flush`\n- `job.paper_execution`\n- `job.backup_bundle`\n\nHigh-value internal spans:\n- `provider.<provider>.fetch_*`\n- `trading_core.reanalyze`\n- `trading_core.run_agent_pipeline`\n- `agent.market_analyst.invoke_llm`\n- `agent.stock_selector.invoke_llm`\n- `llm.prepare_request`\n- `llm.http_request`\n- `llm.parse_response`\n- `llm.normalize_response`\n- `watcher.run`\n- `notification.flush`\n- `notification.deliver_message`\n- `execution.paper_cycle`\n\nLLM metadata-first rule:\n- inspect `model_name`, `http.status_code`, `usage.total_tokens`, and `normalize_succeeded`\n- prompt/response bodies are intentionally excluded from spans",
+            "mode": "markdown"
+          },
+          "title": "Trace Entry Points",
+          "type": "text"
+        },
+        {
+          "datasource": null,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 4
+          },
+          "id": 8,
+          "options": {
+            "content": "### Query Recipes\n\nRecommended Tempo tag filters:\n- `service.name = trading-core`\n- `service.name = market-data-adapter`\n- `service.name = agent-coordinator`\n- `service.name = portfolio-watcher`\n- `service.name = notification-gateway`\n- `service.name = execution-agent`\n- `service.name = ops-stack`\n\nUseful span attributes:\n- `provider`\n- `trade_date`\n- `as_of_date`\n- `actor`\n- `job_name`\n- `agent_name`\n- `readiness_state`\n- `sample_mode`\n- `recommendation_state`\n\nOperational rule:\n- `blocked` / `halted` are expected fail-closed business outcomes.\n- Treat only real exceptions / exporter failures as system errors.",
+            "mode": "markdown"
+          },
+          "title": "Tempo Search Contract",
+          "type": "text"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 18,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 4,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 0
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 12
+          },
+          "id": 9,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "expr": "max by (service) (up{namespace=\"$namespace\",service=~\"trading-core|market-data-adapter|agent-coordinator|portfolio-watcher|notification-gateway|execution-agent\"})",
+              "legendFormat": "{{service}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Tracing-enabled Service Availability",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": [
+        "openclaw",
+        "tracing",
+        "observability"
+      ],
+      "templating": {
+        "list": [
+          {
+            "current": {
+              "selected": true,
+              "text": "apps",
+              "value": "apps"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "label": "Namespace",
+            "name": "namespace",
+            "options": [
+              {
+                "selected": true,
+                "text": "apps",
+                "value": "apps"
+              }
+            ],
+            "query": "apps",
+            "skipUrlSync": false,
+            "type": "constant"
+          }
+        ]
+      },
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "OpenClaw Trace Operations",
+      "uid": "openclaw-traces",
+      "version": 1,
+      "weekStart": ""
+    }

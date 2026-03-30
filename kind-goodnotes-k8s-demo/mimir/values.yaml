@@ -18,3 +18,12 @@ mimir:
       remote_timeout: null
     ingester:
       push_grpc_method_enabled: null
+
+# OpenClaw storage governance override
+mimir:
+  structuredConfig:
+    limits:
+      compactor_blocks_retention_period: 336h
+    compactor:
+      compaction_interval: 30m
+      deletion_delay: 2h

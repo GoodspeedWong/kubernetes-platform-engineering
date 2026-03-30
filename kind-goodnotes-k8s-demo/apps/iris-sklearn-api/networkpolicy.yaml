@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: iris-sklearn-api-ingress
+  namespace: apps
+spec:
+  podSelector:
+    matchLabels:
+      app: iris-sklearn-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+      ports:
+        - port: 8000
+          protocol: TCP

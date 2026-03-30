@@ -941,6 +941,7 @@ data:
         max_send_msg_size: 104857600
     limits:
       max_cache_freshness: 10m
+      compactor_blocks_retention_period: 336h
       max_query_parallelism: 240
       max_total_query_length: 12000h
     memberlist:
@@ -994,7 +995,9 @@ metadata:
 data:
   runtime.yaml: |
     
-    {}
+    overrides:
+      self-monitoring:
+        max_global_series_per_user: 500000
 ---
 # Source: mimir-distributed/charts/minio/templates/pvc.yaml
 apiVersion: v1

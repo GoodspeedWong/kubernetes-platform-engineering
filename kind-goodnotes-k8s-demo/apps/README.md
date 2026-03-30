@@ -17,3 +17,19 @@ kustomize build kind-goodnotes-k8s-demo/apps/<app_name> | kubectl diff -f -
 ```sh
 kubectl apply -k kind-goodnotes-k8s-demo/apps/<app_name>
 ```
+
+## loading image to cluster
+```sh
+kind load docker-image iris-sklearn-api:local --name goodnotes-k8s-demo
+```
+
+
+
+## Test example
+```sh
+curl -X POST \
+  -H "Host: iris.localhost" \
+  -H "Content-Type: application/json" \
+  -d '{"features":[5.1,3.5,1.4,0.2]}' \
+  http://iris.localhost:8080/predict
+  ```

@@ -1,5 +1,8 @@
 loki:
   auth_enabled: false
+  commonConfig:
+    path_prefix: /var/loki
+    replication_factor: 3
   persistence:
     enabled: true
     storageClassName: "standard" # e.g., "gp2", "standard", "nfs-client"
@@ -23,6 +26,17 @@ loki:
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
+    discover_service_name: 
+      - service
+      - app
+      - application
+      - name
+      - app_kubernetes_io_name
+      - container
+      - container_name
+      - component
+      - workload
+      - job
   storage:
     type: s3
     bucketNames:
@@ -34,8 +48,8 @@ loki:
       region: us-east-1
       insecure: true
       s3forcepathstyle: true
-      accessKeyId: "${MINIO_ROOT_USER"
-      secretAccessKey: "${MINIO_ROOT_PASSWORD}"
+      accessKeyId: "minio"
+      secretAccessKey: "minio123"
 
 
 deploymentMode: Distributed

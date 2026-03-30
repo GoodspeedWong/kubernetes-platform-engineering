@@ -1,0 +1,946 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-openclaw-trading-overview
+  namespace: monitoring
+data:
+  openclaw-trading-overview.json: |-
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "sum(trading_core_order_drafts{namespace=\"$namespace\",status=\"pending_approval\"})",
+              "instant": true,
+              "legendFormat": "Pending approval",
+              "refId": "A"
+            }
+          ],
+          "title": "Pending Order Drafts",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 3
+                  },
+                  {
+                    "color": "red",
+                    "value": 6
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "sum(trading_core_positions{namespace=\"$namespace\",state=\"open\"})",
+              "instant": true,
+              "legendFormat": "Open",
+              "refId": "A"
+            }
+          ],
+          "title": "Open Positions",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 3
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 0
+          },
+          "id": 3,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(trading_core_active_alerts{namespace=\"$namespace\"})",
+              "instant": true,
+              "legendFormat": "Active",
+              "refId": "A"
+            }
+          ],
+          "title": "Active Alerts",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 0
+          },
+          "id": 4,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "sum(trading_core_notifications{namespace=\"$namespace\",status=\"pending\"})",
+              "instant": true,
+              "legendFormat": "Pending",
+              "refId": "A"
+            }
+          ],
+          "title": "Pending Notifications",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1800
+                  },
+                  {
+                    "color": "red",
+                    "value": 5400
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 0,
+            "y": 4
+          },
+          "id": 5,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(time() - market_data_last_success_unixtime{namespace=\"$namespace\"})",
+              "instant": true,
+              "legendFormat": "Seconds",
+              "refId": "A"
+            }
+          ],
+          "title": "Market Data Freshness",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 300
+                  },
+                  {
+                    "color": "red",
+                    "value": 600
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 8,
+            "y": 4
+          },
+          "id": 6,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(time() - portfolio_watch_last_success_unixtime{namespace=\"$namespace\"})",
+              "instant": true,
+              "legendFormat": "Seconds",
+              "refId": "A"
+            }
+          ],
+          "title": "Watcher Freshness",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 300
+                  },
+                  {
+                    "color": "red",
+                    "value": 600
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 8,
+            "x": 16,
+            "y": 4
+          },
+          "id": 7,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "expr": "max(time() - notification_last_success_unixtime{namespace=\"$namespace\"})",
+              "instant": true,
+              "legendFormat": "Seconds",
+              "refId": "A"
+            }
+          ],
+          "title": "Notification Freshness",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 8
+          },
+          "id": 8,
+          "options": {
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true
+          },
+          "targets": [
+            {
+              "expr": "sum by (status) (trading_core_order_drafts{namespace=\"$namespace\"})",
+              "instant": true,
+              "legendFormat": "{{status}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Order Drafts by Status",
+          "type": "bargauge"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 8
+          },
+          "id": 9,
+          "options": {
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true
+          },
+          "targets": [
+            {
+              "expr": "sum by (state) (trading_core_positions{namespace=\"$namespace\"})",
+              "instant": true,
+              "legendFormat": "{{state}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Positions by State",
+          "type": "bargauge"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 8
+          },
+          "id": 10,
+          "options": {
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true
+          },
+          "targets": [
+            {
+              "expr": "sum by (status) (trading_core_notifications{namespace=\"$namespace\"})",
+              "instant": true,
+              "legendFormat": "{{status}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Notification Outbox by Status",
+          "type": "bargauge"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 16
+          },
+          "id": 11,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (status) (increase(trading_core_reanalyze_total{namespace=\"$namespace\"}[$__rate_interval]))",
+              "legendFormat": "reanalyze {{status}}",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (status) (increase(trading_core_alert_refresh_total{namespace=\"$namespace\"}[$__rate_interval]))",
+              "legendFormat": "alert refresh {{status}}",
+              "refId": "B"
+            }
+          ],
+          "title": "Trading Core Run Outcomes",
+          "type": "timeseries"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 16
+          },
+          "id": 12,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (status) (increase(market_data_ingest_total{namespace=\"$namespace\"}[$__rate_interval]))",
+              "legendFormat": "ingest {{status}}",
+              "refId": "A"
+            },
+            {
+              "expr": "increase(market_data_cache_hits_total{namespace=\"$namespace\"}[$__rate_interval])",
+              "legendFormat": "cache hits",
+              "refId": "B"
+            },
+            {
+              "expr": "increase(market_data_provider_fetches_total{namespace=\"$namespace\"}[$__rate_interval])",
+              "legendFormat": "provider fetches",
+              "refId": "C"
+            }
+          ],
+          "title": "Market Data Ingestion Activity",
+          "type": "timeseries"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 24
+          },
+          "id": 13,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (status) (increase(portfolio_watch_runs_total{namespace=\"$namespace\"}[$__rate_interval]))",
+              "legendFormat": "watch runs {{status}}",
+              "refId": "A"
+            },
+            {
+              "expr": "increase(portfolio_watch_alerts_total{namespace=\"$namespace\"}[$__rate_interval])",
+              "legendFormat": "alerts generated",
+              "refId": "B"
+            },
+            {
+              "expr": "increase(portfolio_watch_notifications_enqueued_total{namespace=\"$namespace\"}[$__rate_interval])",
+              "legendFormat": "notifications enqueued",
+              "refId": "C"
+            }
+          ],
+          "title": "Portfolio Watcher Activity",
+          "type": "timeseries"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 24
+          },
+          "id": 14,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (status) (increase(notification_flush_total{namespace=\"$namespace\"}[$__rate_interval]))",
+              "legendFormat": "flush {{status}}",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (status) (increase(notification_deliveries_total{namespace=\"$namespace\"}[$__rate_interval]))",
+              "legendFormat": "delivery {{status}}",
+              "refId": "B"
+            }
+          ],
+          "title": "Notification Delivery Activity",
+          "type": "timeseries"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 32
+          },
+          "id": 15,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "1000 * histogram_quantile(0.50, sum by (le) (rate(openclaw_api_request_duration_seconds_bucket{namespace=\"$namespace\",service=\"trading-core\",method=\"POST\",route=\"/jobs/reanalyze\"}[$__rate_interval])))",
+              "legendFormat": "p50",
+              "refId": "A"
+            },
+            {
+              "expr": "1000 * histogram_quantile(0.90, sum by (le) (rate(openclaw_api_request_duration_seconds_bucket{namespace=\"$namespace\",service=\"trading-core\",method=\"POST\",route=\"/jobs/reanalyze\"}[$__rate_interval])))",
+              "legendFormat": "p90",
+              "refId": "B"
+            },
+            {
+              "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(openclaw_api_request_duration_seconds_bucket{namespace=\"$namespace\",service=\"trading-core\",method=\"POST\",route=\"/jobs/reanalyze\"}[$__rate_interval])))",
+              "legendFormat": "p99",
+              "refId": "C"
+            }
+          ],
+          "title": "API Latency: POST /jobs/reanalyze",
+          "type": "timeseries"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 32
+          },
+          "id": 16,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "1000 * histogram_quantile(0.50, sum by (le) (rate(openclaw_api_request_duration_seconds_bucket{namespace=\"$namespace\",service=\"trading-core\",method=\"POST\",route=\"/jobs/run-agent-pipeline\"}[$__rate_interval])))",
+              "legendFormat": "p50",
+              "refId": "A"
+            },
+            {
+              "expr": "1000 * histogram_quantile(0.90, sum by (le) (rate(openclaw_api_request_duration_seconds_bucket{namespace=\"$namespace\",service=\"trading-core\",method=\"POST\",route=\"/jobs/run-agent-pipeline\"}[$__rate_interval])))",
+              "legendFormat": "p90",
+              "refId": "B"
+            },
+            {
+              "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(openclaw_api_request_duration_seconds_bucket{namespace=\"$namespace\",service=\"trading-core\",method=\"POST\",route=\"/jobs/run-agent-pipeline\"}[$__rate_interval])))",
+              "legendFormat": "p99",
+              "refId": "C"
+            }
+          ],
+          "title": "API Latency: POST /jobs/run-agent-pipeline",
+          "type": "timeseries"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 32
+          },
+          "id": 17,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "1000 * histogram_quantile(0.50, sum by (le) (rate(openclaw_api_request_duration_seconds_bucket{namespace=\"$namespace\",service=\"trading-core\",method=\"GET\",route=\"/runtime/market-data-provider-readiness\"}[$__rate_interval])))",
+              "legendFormat": "p50",
+              "refId": "A"
+            },
+            {
+              "expr": "1000 * histogram_quantile(0.90, sum by (le) (rate(openclaw_api_request_duration_seconds_bucket{namespace=\"$namespace\",service=\"trading-core\",method=\"GET\",route=\"/runtime/market-data-provider-readiness\"}[$__rate_interval])))",
+              "legendFormat": "p90",
+              "refId": "B"
+            },
+            {
+              "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(openclaw_api_request_duration_seconds_bucket{namespace=\"$namespace\",service=\"trading-core\",method=\"GET\",route=\"/runtime/market-data-provider-readiness\"}[$__rate_interval])))",
+              "legendFormat": "p99",
+              "refId": "C"
+            }
+          ],
+          "title": "API Latency: GET /runtime/market-data-provider-readiness",
+          "type": "timeseries"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 40
+          },
+          "id": 18,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(openclaw_api_requests_total{namespace=\"$namespace\",service=\"trading-core\",method=\"POST\",route=\"/jobs/reanalyze\",status_class=~\"2xx|3xx\"}[$__rate_interval])) / clamp_min(sum(rate(openclaw_api_requests_total{namespace=\"$namespace\",service=\"trading-core\",method=\"POST\",route=\"/jobs/reanalyze\"}[$__rate_interval])), 1e-9)",
+              "legendFormat": "POST /jobs/reanalyze",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(openclaw_api_requests_total{namespace=\"$namespace\",service=\"trading-core\",method=\"POST\",route=\"/jobs/run-agent-pipeline\",status_class=~\"2xx|3xx\"}[$__rate_interval])) / clamp_min(sum(rate(openclaw_api_requests_total{namespace=\"$namespace\",service=\"trading-core\",method=\"POST\",route=\"/jobs/run-agent-pipeline\"}[$__rate_interval])), 1e-9)",
+              "legendFormat": "POST /jobs/run-agent-pipeline",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(rate(openclaw_api_requests_total{namespace=\"$namespace\",service=\"trading-core\",method=\"GET\",route=\"/runtime/market-data-provider-readiness\",status_class=~\"2xx|3xx\"}[$__rate_interval])) / clamp_min(sum(rate(openclaw_api_requests_total{namespace=\"$namespace\",service=\"trading-core\",method=\"GET\",route=\"/runtime/market-data-provider-readiness\"}[$__rate_interval])), 1e-9)",
+              "legendFormat": "GET /runtime/market-data-provider-readiness",
+              "refId": "C"
+            }
+          ],
+          "title": "Core API Success Rate",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": [
+        "openclaw",
+        "trading",
+        "observability"
+      ],
+      "templating": {
+        "list": [
+          {
+            "current": {
+              "selected": true,
+              "text": "apps",
+              "value": "apps"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "label": "Namespace",
+            "name": "namespace",
+            "options": [
+              {
+                "selected": true,
+                "text": "apps",
+                "value": "apps"
+              }
+            ],
+            "query": "apps",
+            "skipUrlSync": false,
+            "type": "constant"
+          }
+        ]
+      },
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "OpenClaw Trading Overview",
+      "uid": "openclaw-trading",
+      "version": 2,
+      "weekStart": ""
+    }

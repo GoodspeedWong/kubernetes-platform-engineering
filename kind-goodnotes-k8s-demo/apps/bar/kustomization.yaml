@@ -1,4 +1,5 @@
 resources:
 - deployment-config.yaml
 - service.yaml
-- ingress.yaml
+- httproute.yaml
+- networkpolicy.yaml

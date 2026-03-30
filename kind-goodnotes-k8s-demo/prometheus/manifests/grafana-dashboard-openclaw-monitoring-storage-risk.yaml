@@ -1,0 +1,486 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-openclaw-monitoring-storage-risk
+  namespace: monitoring
+data:
+  openclaw-monitoring-storage-risk.json: |-
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "datasource": null,
+          "gridPos": {
+            "h": 5,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "content": "### Monitoring Storage Risk Overview\n\nThis dashboard reads the latest `monitoring_storage_audit` snapshot from `summary_snapshots` through the Grafana PostgreSQL datasource `openclaw-postgres`.\n\nFocus order:\n- `Threshold Watch`\n- `Node Disk Pressure`\n- `Blast Radius to apps`\n- `PVC Requested vs Actual`\n- `Mimir TSDB Risk by Zone`\n\nUse together with:\n- runbook: `docs/runbooks/monitoring_storage_incident_zh.md`\n- RCA: `docs/postmortems/2026-03-27-worker3-disk-full-rca.md`\n\nThis is intentionally storage-risk-first, not a generic infrastructure overview.",
+            "mode": "markdown"
+          },
+          "title": "How To Read This",
+          "type": "text"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 5,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          },
+          "id": 2,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n)\nselect payload->>'generated_date' as \"Generated Date\",\n       payload->'summary'->>'overall_risk' as \"Overall Risk\",\n       (payload->'summary'->>'high_risk_volume_count')::int as \"High Risk Volumes\",\n       (payload->'summary'->>'blast_radius_count')::int as \"Blast Radius Count\",\n       payload->'summary'->>'total_requested_human' as \"Requested\",\n       payload->'summary'->>'total_measured_human' as \"Measured\"\nfrom latest;",
+              "refId": "A"
+            }
+          ],
+          "title": "Latest Audit Summary",
+          "type": "table"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 10
+          },
+          "id": 9,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n)\nselect (payload->'summary'->>'high_risk_volume_count')::int as value\nfrom latest;",
+              "refId": "A"
+            }
+          ],
+          "title": "Critical Volumes",
+          "type": "stat"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 3
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 10
+          },
+          "id": 10,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n)\nselect (payload->'summary'->>'blast_radius_count')::int as value\nfrom latest;",
+              "refId": "A"
+            }
+          ],
+          "title": "Blast Radius Count",
+          "type": "stat"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 0,
+              "max": 100,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 10
+          },
+          "id": 11,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n), node_rows as (\n  select regexp_replace(coalesce(node_df->>'used_percent', '0%'), '%', '', 'g')::numeric as used_percent\n  from jsonb_to_recordset((select payload->'top_by_node' from latest))\n    as x(node text, requested_human text, measured_human text, consumer_count int, measured_bytes bigint, node_df jsonb)\n)\nselect max(used_percent) as value\nfrom node_rows;",
+              "refId": "A"
+            }
+          ],
+          "title": "Max Node Root Used %",
+          "type": "stat"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 8
+                  },
+                  {
+                    "color": "red",
+                    "value": 16
+                  }
+                ]
+              },
+              "unit": "gbytes"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 10
+          },
+          "id": 12,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n), ingesters as (\n  select measured_bytes\n  from jsonb_to_recordset((select payload->'volumes' from latest))\n    as x(claim text, workload text, node text, requested_human text, measured_human text, requested_bytes bigint, measured_bytes bigint, risk text, top_subpaths jsonb)\n  where workload like 'StatefulSet/mimir-ingester-zone-%'\n)\nselect round(max(measured_bytes)::numeric / 1073741824, 1) as value\nfrom ingesters;",
+              "refId": "A"
+            }
+          ],
+          "title": "Largest Mimir Zone GiB",
+          "type": "stat"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 14
+          },
+          "id": 3,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n)\nselect row_number() over (\n         order by regexp_replace(coalesce(node_df->>'used_percent', '0%'), '%', '', 'g')::int desc,\n                  measured_bytes desc nulls last\n       ) as \"Rank\",\n       node as \"Node\",\n       node_df->>'used_percent' as \"Root Used %\",\n       measured_human as \"Measured\",\n       requested_human as \"Requested\",\n       consumer_count as \"Consumers\"\nfrom jsonb_to_recordset((select payload->'top_by_node' from latest))\n  as x(node text, requested_human text, measured_human text, consumer_count int, measured_bytes bigint, node_df jsonb)\norder by regexp_replace(coalesce(node_df->>'used_percent', '0%'), '%', '', 'g')::int desc,\n         measured_bytes desc nulls last;",
+              "refId": "A"
+            }
+          ],
+          "title": "Node Disk Pressure",
+          "type": "table"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 14
+          },
+          "id": 4,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n)\nselect row_number() over (order by node, monitoring_workload) as \"Rank\",\n       node as \"Node\",\n       apps_claim as \"Apps PVC\",\n       coalesce((select string_agg(value, ', ') from jsonb_array_elements_text(apps_workloads) value), '-') as \"Apps Workloads\",\n       monitoring_workload as \"Monitoring Workload\",\n       monitoring_claim as \"Monitoring PVC\",\n       monitoring_measured_human as \"Monitoring Measured\"\nfrom jsonb_to_recordset((select payload->'blast_radius' from latest))\n  as x(node text, apps_claim text, apps_workloads jsonb, monitoring_workload text, monitoring_claim text, monitoring_measured_human text)\norder by node, monitoring_workload;",
+              "refId": "A"
+            }
+          ],
+          "title": "Storage Blast Radius to apps",
+          "type": "table"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 23
+          },
+          "id": 5,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n)\nselect row_number() over (order by measured_bytes desc nulls last) as \"Rank\",\n       claim as \"PVC\",\n       workload as \"Workload\",\n       node as \"Node\",\n       requested_human as \"Requested\",\n       measured_human as \"Measured\",\n       round(coalesce(measured_bytes, 0)::numeric / nullif(requested_bytes, 0), 2) as \"Actual/Requested\",\n       risk as \"Risk\",\n       coalesce(top_subpaths->0->>'basename', '-') as \"Hottest Path\",\n       coalesce(top_subpaths->0->>'human', '-') as \"Hot Size\"\nfrom jsonb_to_recordset((select payload->'volumes' from latest))\n  as x(claim text, workload text, node text, requested_human text, measured_human text, requested_bytes bigint, measured_bytes bigint, risk text, top_subpaths jsonb)\norder by measured_bytes desc nulls last\nlimit 20;",
+              "refId": "A"
+            }
+          ],
+          "title": "PVC Requested vs Actual Usage",
+          "type": "table"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 23
+          },
+          "id": 6,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n)\nselect row_number() over (order by measured_bytes desc nulls last) as \"Rank\",\n       replace(workload, 'StatefulSet/mimir-ingester-', '') as \"Zone\",\n       node as \"Node\",\n       requested_human as \"Requested\",\n       measured_human as \"Measured\",\n       risk as \"Risk\",\n       coalesce(top_subpaths->0->>'basename', '-') as \"Hottest Path\",\n       coalesce(top_subpaths->0->>'human', '-') as \"Hot Size\"\nfrom jsonb_to_recordset((select payload->'volumes' from latest))\n  as x(claim text, workload text, node text, requested_human text, measured_human text, requested_bytes bigint, measured_bytes bigint, risk text, top_subpaths jsonb)\nwhere workload like 'StatefulSet/mimir-ingester-zone-%'\norder by measured_bytes desc nulls last;",
+              "refId": "A"
+            }
+          ],
+          "title": "Mimir TSDB Risk by Zone",
+          "type": "table"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 33
+          },
+          "id": 7,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n)\nselect row_number() over (order by measured_bytes desc nulls last) as \"Rank\",\n       workload as \"Workload\",\n       node as \"Node\",\n       requested_human as \"Requested\",\n       measured_human as \"Measured\",\n       round(coalesce(measured_bytes, 0)::numeric / nullif(requested_bytes, 0), 2) as \"Actual/Requested\",\n       risk as \"Risk\"\nfrom jsonb_to_recordset((select payload->'top_by_workload' from latest))\n  as x(workload text, node text, requested_human text, measured_human text, requested_bytes bigint, measured_bytes bigint, risk text)\norder by measured_bytes desc nulls last\nlimit 15;",
+              "refId": "A"
+            }
+          ],
+          "title": "Top Local-Path Consumers",
+          "type": "table"
+        },
+        {
+          "datasource": "openclaw-postgres",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 33
+          },
+          "id": 8,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "with latest as (\n  select payload\n  from summary_snapshots\n  where summary_type = 'monitoring_storage_audit' and snapshot_key = 'latest'\n), ranked as (\n  select claim,\n         workload,\n         node,\n         risk,\n         top_subpaths->0->>'path' as hot_path,\n         top_subpaths->0->>'basename' as hot_basename,\n         top_subpaths->0->>'human' as hot_human,\n         (top_subpaths->0->>'bytes')::bigint as hot_bytes\n  from jsonb_to_recordset((select payload->'volumes' from latest))\n    as x(claim text, workload text, node text, risk text, top_subpaths jsonb)\n)\nselect row_number() over (order by hot_bytes desc nulls last) as \"Rank\",\n       claim as \"PVC\",\n       workload as \"Workload\",\n       node as \"Node\",\n       coalesce(hot_basename, '-') as \"Hot Path\",\n       coalesce(hot_human, '-') as \"Hot Size\",\n       coalesce(left(hot_path, 140), '-') as \"Path\",\n       risk as \"Risk\"\nfrom ranked\nwhere hot_bytes is not null\norder by hot_bytes desc nulls last\nlimit 20;",
+              "refId": "A"
+            }
+          ],
+          "title": "Hot Subpath Drilldown",
+          "type": "table"
+        }
+      ],
+      "refresh": "1m",
+      "schemaVersion": 39,
+      "tags": [
+        "openclaw",
+        "monitoring",
+        "storage",
+        "risk"
+      ],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "OpenClaw Monitoring Storage Risk",
+      "uid": "openclaw-monitoring-storage-risk",
+      "version": 3,
+      "weekStart": ""
+    }

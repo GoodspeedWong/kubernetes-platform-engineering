@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bar-ingress
+  namespace: apps
+spec:
+  podSelector:
+    matchLabels:
+      app: http-echo
+      variant: bar
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+      ports:
+        - port: 5678
+          protocol: TCP

@@ -1,0 +1,9 @@
+mimir:
+  structuredConfig:
+    limits:
+      # Retain metric blocks for 14 days by default to keep local object storage growth bounded.
+      compactor_blocks_retention_period: 336h
+    compactor:
+      # Keep delete behavior explicit so rendered config stays reviewable in the monitoring repo.
+      compaction_interval: 30m
+      deletion_delay: 2h

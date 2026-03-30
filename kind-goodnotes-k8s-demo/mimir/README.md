@@ -19,3 +19,8 @@ kustomize build kind-goodnotes-k8s-demo/mimir | kubectl diff -f -
 k apply -k kind-goodnotes-k8s-demo/mimir --dry-run=server
 
 ```
+
+## OpenClaw governance note
+
+This stack now carries an explicit Mimir block-retention override for the local playground.
+Retaining blocks indefinitely on local-path storage is not acceptable because it can exhaust the KinD worker filesystem and cascade into `apps/postgres` outages.

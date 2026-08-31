@@ -1,0 +1,7 @@
+argocd-project:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available

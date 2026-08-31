@@ -1,0 +1,151 @@
+# Review-only merged values contract for the remote EKS Cilium Release.
+# The __INJECTED_* values come from the aggregate intent or cluster-owned, token-free
+# connection Secret at reconciliation time; do not apply this file directly.
+agentNotReadyTaintKey: node.cilium.io/agent-not-ready
+autoDirectNodeRoutes: false
+cluster:
+  name: __INJECTED_CLUSTER_NAME__
+cni:
+  chainingMode: none
+  exclusive: true
+  install: true
+  iptablesRemoveAWSRules: true
+  uninstall: false
+dnsPolicy: Default
+eni:
+  awsEnablePrefixDelegation: false
+  awsReleaseExcessIPs: true
+  enabled: true
+  eniTags:
+    io.cilium/cilium-managed: "true"
+    io.cilium/cluster-name: __INJECTED_CLUSTER_NAME__
+    platform.aws.goodnotes.io/environment: __INJECTED_ENVIRONMENT_NAME__
+  gcInterval: 5m
+  gcTags:
+    io.cilium/cilium-managed: "true"
+    io.cilium/cluster-name: __INJECTED_CLUSTER_NAME__
+    platform.aws.goodnotes.io/environment: __INJECTED_ENVIRONMENT_NAME__
+  iamRole: __INJECTED_CILIUM_OPERATOR_ROLE_ARN__
+  instanceTagsFilter:
+    - eks:eks-cluster-name=__INJECTED_CLUSTER_NAME__
+    - platform.aws.goodnotes.io/environment=__INJECTED_ENVIRONMENT_NAME__
+  nodeSpec:
+    deleteOnTermination: true
+    securityGroupTags:
+      - karpenter.sh/discovery=__INJECTED_ENVIRONMENT_NAME__
+      - kubernetes.io/cluster/__INJECTED_CLUSTER_NAME__=owned
+      - platform.aws.goodnotes.io/environment=__INJECTED_ENVIRONMENT_NAME__
+    subnetTags:
+      - kubernetes.io/cluster/__INJECTED_CLUSTER_NAME__=shared
+      - platform.aws.goodnotes.io/environment=__INJECTED_ENVIRONMENT_NAME__
+      - platform.aws.goodnotes.io/subnet-visibility=private
+  subnetTagsFilter:
+    - kubernetes.io/cluster/__INJECTED_CLUSTER_NAME__=shared
+    - platform.aws.goodnotes.io/environment=__INJECTED_ENVIRONMENT_NAME__
+    - platform.aws.goodnotes.io/subnet-visibility=private
+hubble:
+  enabled: false
+image:
+  digest: sha256:ae9ea21f7427fe24bc6ea7247eb552157a1b0a431744045d3f641545ca71d11b
+  pullPolicy: IfNotPresent
+  repository: quay.io/cilium/cilium
+  tag: v1.20.1
+  useDigest: true
+ipam:
+  mode: eni
+ipv4:
+  enabled: true
+ipv4NativeRoutingCIDR: __INJECTED_NATIVE_ROUTING_CIDR__
+ipv6:
+  enabled: false
+k8sServiceHost: __INJECTED_EKS_API_HOST__
+k8sServicePort: "443"
+kubeProxyReplacement: true
+nodeSelector:
+  karpenter.sh/nodepool: spot-general
+  kubernetes.io/os: linux
+nodeinit:
+  enabled: false
+operator:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution: []
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                io.cilium/app: operator
+            topologyKey: kubernetes.io/hostname
+  dnsPolicy: Default
+  enabled: true
+  extraEnv:
+    - name: AWS_REGION
+      value: __INJECTED_AWS_REGION__
+    - name: AWS_DEFAULT_REGION
+      value: __INJECTED_AWS_REGION__
+    - name: AWS_EC2_METADATA_DISABLED
+      value: "true"
+    - name: AWS_STS_REGIONAL_ENDPOINTS
+      value: regional
+  hostNetwork: true
+  image:
+    awsDigest: sha256:7cf0cb0e6584f72ca8de951a1be03829f69fcaeba69dc6c7856fc4470545acd7
+    pullPolicy: IfNotPresent
+    repository: quay.io/cilium/operator
+    tag: v1.20.1
+    useDigest: true
+  nodeSelector:
+    karpenter.sh/nodepool: spot-general
+    kubernetes.io/os: linux
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+    minAvailable: null
+  removeNodeTaints: true
+  replicas: 2
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  setNodeNetworkStatus: true
+  setNodeTaints: true
+  skipCRDCreation: false
+  tolerations:
+    - key: node.kubernetes.io/not-ready
+      operator: Exists
+    - key: node.cloudprovider.kubernetes.io/uninitialized
+      operator: Exists
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+  unmanagedPodWatcher:
+    intervalSeconds: 15
+    restart: true
+    selector: k8s-app=kube-dns
+resources:
+  limits:
+    cpu: "1"
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+routingMode: native
+serviceAccounts:
+  cilium:
+    create: true
+    name: cilium
+  operator:
+    create: true
+    name: cilium-operator
+tolerations:
+  - key: node.cilium.io/agent-not-ready
+    operator: Exists
+  - key: node.kubernetes.io/not-ready
+    operator: Exists
+  - key: node.cloudprovider.kubernetes.io/uninitialized
+    operator: Exists

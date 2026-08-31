@@ -1,0 +1,60 @@
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: eks-remote-auth
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-bootstrap
+    platform.aws.goodnotes.io/resource-role: remote-auth-runtime
+spec:
+  deploymentTemplate:
+    metadata:
+      labels:
+        platform.aws.goodnotes.io/session-renewal: enabled
+    spec:
+      selector: {}
+      template:
+        metadata:
+          labels:
+            platform.aws.goodnotes.io/resource-role: remote-auth-runtime
+        spec:
+          securityContext:
+            fsGroup: 2000
+            fsGroupChangePolicy: OnRootMismatch
+          containers:
+            - name: package-runtime
+              env:
+                - name: AWS_CONFIG_FILE
+                  value: /var/run/secrets/aws/config
+                - name: AWS_SHARED_CREDENTIALS_FILE
+                  value: /var/run/secrets/aws/credentials
+                - name: AWS_PROFILE
+                  value: eks-deployment
+                - name: AWS_SDK_LOAD_CONFIG
+                  value: "1"
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: "true"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+              volumeMounts:
+                - name: chart-cache
+                  mountPath: /tmp
+                - name: eks-deployment-aws-credentials
+                  mountPath: /var/run/secrets/aws
+                  readOnly: true
+          volumes:
+            - name: chart-cache
+              emptyDir:
+                sizeLimit: 256Mi
+            - name: eks-deployment-aws-credentials
+              secret:
+                secretName: eks-platform-aws-session
+                optional: false
+                items:
+                  - key: credentials
+                    path: credentials
+                    mode: 288
+                  - key: config
+                    path: config
+                    mode: 288

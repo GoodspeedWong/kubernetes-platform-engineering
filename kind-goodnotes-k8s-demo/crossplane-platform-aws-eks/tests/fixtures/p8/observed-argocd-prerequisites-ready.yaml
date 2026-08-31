@@ -1,0 +1,28 @@
+gitops-apps-namespace:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+argocd-apps-role:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+argocd-apps-rolebinding:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+argocd-release:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available

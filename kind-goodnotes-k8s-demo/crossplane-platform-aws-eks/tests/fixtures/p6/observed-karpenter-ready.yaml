@@ -1,0 +1,54 @@
+karpenter-crds-release:
+  Resource:
+    apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      namespace: crossplane-system
+      annotations:
+        crossplane.io/external-name: karpenter-crd
+        krm.kcl.dev/composition-resource-name: karpenter-crds-release
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+karpenter-controller-release:
+  Resource:
+    apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      namespace: crossplane-system
+      annotations:
+        crossplane.io/external-name: karpenter
+        krm.kcl.dev/composition-resource-name: karpenter-controller-release
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+ec2-node-class:
+  Resource:
+    apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      namespace: crossplane-system
+      annotations:
+        krm.kcl.dev/composition-resource-name: ec2-node-class
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+spot-general-node-pool:
+  Resource:
+    apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      namespace: crossplane-system
+      annotations:
+        krm.kcl.dev/composition-resource-name: spot-general-node-pool
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available

@@ -1,0 +1,27 @@
+schemaVersion: 1
+scope: planning-envelope-not-runtime-measurement
+smallestAllowedNode:
+  cpuMilli: 2000
+  memoryMi: 4096
+safetyMarginPercent: 20
+requests:
+  - name: cilium-agent
+    countOnFirstNode: 1
+    cpuMilliEach: 100
+    memoryMiEach: 128
+  - name: cilium-operator
+    countOnFirstNode: 2
+    cpuMilliEach: 100
+    memoryMiEach: 256
+  - name: coredns
+    countOnFirstNode: 2
+    cpuMilliEach: 100
+    memoryMiEach: 70
+  - name: bootstrap-trigger-workload
+    countOnFirstNode: 1
+    cpuMilliEach: 250
+    memoryMiEach: 256
+  - name: kubelet-and-system-reserve
+    countOnFirstNode: 1
+    cpuMilliEach: 500
+    memoryMiEach: 1024

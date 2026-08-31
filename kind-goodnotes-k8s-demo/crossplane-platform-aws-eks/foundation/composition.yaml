@@ -1,0 +1,1446 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xclusterfoundations.platform.aws.goodnotes.io
+  labels:
+    platform.aws.goodnotes.io/composition-role: owner
+    platform.aws.goodnotes.io/revision-review: required
+    platform.aws.goodnotes.io/type: cluster-foundation
+  annotations:
+    platform.aws.goodnotes.io/implementation-phase: P5-P9
+spec:
+  compositeTypeRef:
+    apiVersion: platform.aws.goodnotes.io/v1alpha1
+    kind: XClusterFoundation
+  mode: Pipeline
+  pipeline:
+    - step: configure-refreshable-remote-eks-authentication
+      functionRef:
+        name: function-kcl
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLInput
+        spec:
+          source: |
+            import regex
+
+            oxr = option("params").oxr
+            ocds = option("params").ocds
+            _dxr = option("params").dxr
+            params = oxr.spec.parameters
+
+            foundation_xr_name = oxr.metadata.name
+            environment_name = params.environmentRef.name
+            cluster_name = params.clusterRef.name
+            namespace = params.managementNamespace
+            remote_kubeconfig_secret_name = environment_name + "-eks-access"
+            kubernetes_provider_config_name = environment_name + "-kubernetes"
+            helm_provider_config_name = environment_name + "-helm"
+            karpenter_chart_version = "1.14.1"
+            karpenter_node_image_alias = "al2023@v20260728"
+            karpenter_namespace = "karpenter"
+            karpenter_node_class_name = "spot-general"
+            karpenter_node_pool_name = "spot-general"
+            karpenter_instance_profile_name = environment_name + "-ec2-node"
+            cilium_chart_version = "1.20.1"
+            cilium_namespace = "kube-system"
+            argocd_chart_version = "10.4.0"
+            argocd_app_version = "v3.5.1"
+            argocd_namespace = "argocd"
+            argocd_project_name = "business"
+            gitops_destination_namespace = "apps"
+            gitops_bootstrap_name = environment_name + "-bootstrap"
+            network_uat_approval_name = environment_name + "-network-uat-approval"
+            foundation_uid = oxr.metadata?.uid or ""
+            foundation_generation = str(oxr.metadata?.generation or 0)
+            environment_uid = params.environmentIdentity.uid
+            environment_generation = str(params.environmentIdentity.generation)
+            requested_stage = params.lifecycle.retirementStage
+            persisted_approved_stage = oxr.status?.retirement?.approvedStage or "Active"
+            stage_rank = {
+                "Active" = 0
+                "DrainWorkloads" = 1
+                "RemoveGitOps" = 2
+                "DrainCapacity" = 3
+                "RemoveFoundation" = 4
+                "DeleteReady" = 5
+            }
+            expected_inventory_sha = {
+                "Active" = "0000000000000000000000000000000000000000000000000000000000000000"
+                "DrainWorkloads" = "fbb467431d7c826f6f7ef708f05720295713644227bb764df2d29da419b1b3ab"
+                "RemoveGitOps" = "b332df0d4117581633d0b83e21f12a4719cd1283dcf126b293817f2a11e0f45d"
+                "DrainCapacity" = "6d55af77af0408b62309612bca2c7ea6396665473094aeb60301dafcc82137bb"
+                "RemoveFoundation" = "2d1ec06e768a9186168145a10f72a3860e728b0ced41d531297e7db9970ba98f"
+                "DeleteReady" = "a22f03ef60bb3bd86bafacf72011322d9ef014ed0cda6e4f796f77b2d37ac527"
+            }
+            gitops_configured = "gitOps" in params
+
+            evidence_configured = "evidenceRef" in params.lifecycle
+            evidence_ref = params.lifecycle.evidenceRef if evidence_configured else {kind = "ConfigMap", name = "", namespace = namespace}
+            retirement_evidence = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "Object"
+                metadata = {
+                    namespace = namespace
+                    annotations = {"krm.kcl.dev/composition-resource-name" = "retirement-evidence"}
+                    labels = {
+                        "app.kubernetes.io/part-of" = "crossplane-eks-platform"
+                        "platform.aws.goodnotes.io/environment" = environment_name
+                        "platform.aws.goodnotes.io/managed-by" = "crossplane"
+                        "platform.aws.goodnotes.io/resource-role" = "retirement-evidence-observer"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["Observe"]
+                    providerConfigRef = {kind = "ClusterProviderConfig", name = "eks-lifecycle-evidence"}
+                    forProvider = {manifest = {
+                        apiVersion = "v1"
+                        kind = evidence_ref.kind
+                        metadata = {name = evidence_ref.name, namespace = evidence_ref.namespace}
+                    }}
+                    readiness = {policy = "DeriveFromCelQuery", celQuery = "object.data['approved'] == 'true'"}
+                }
+            }
+            retirement_evidence_resources = [retirement_evidence] if evidence_configured else []
+            _retirement_evidence_conditions = ocds["retirement-evidence"].Resource?.status?.conditions or [] if "retirement-evidence" in ocds else []
+            retirement_evidence_wrapper_ready = len([condition for condition in _retirement_evidence_conditions if condition.type == "Ready" and condition.status == "True"]) > 0
+            _retirement_manifest = ocds["retirement-evidence"].Resource?.status?.atProvider?.manifest or {} if "retirement-evidence" in ocds else {}
+            _retirement_labels = _retirement_manifest?.metadata?.labels or {}
+            _retirement_data = _retirement_manifest?.data or {}
+            _retirement_environment = _retirement_labels["platform.aws.goodnotes.io/environment"] if "platform.aws.goodnotes.io/environment" in _retirement_labels else ""
+            _retirement_approved = _retirement_data["approved"] if "approved" in _retirement_data else ""
+            _retirement_environment_uid = _retirement_data["environment-uid"] if "environment-uid" in _retirement_data else ""
+            _retirement_environment_generation = _retirement_data["environment-generation"] if "environment-generation" in _retirement_data else ""
+            _retirement_foundation_uid = _retirement_data["foundation-uid"] if "foundation-uid" in _retirement_data else ""
+            _retirement_foundation_generation = _retirement_data["foundation-generation"] if "foundation-generation" in _retirement_data else ""
+            _retirement_from_stage = _retirement_data["from-stage"] if "from-stage" in _retirement_data else ""
+            _retirement_to_stage = _retirement_data["to-stage"] if "to-stage" in _retirement_data else ""
+            _retirement_inventory_sha = _retirement_data["inventory-sha256"] if "inventory-sha256" in _retirement_data else ""
+            _retirement_run_id = _retirement_data["run-id"] if "run-id" in _retirement_data else ""
+            _retirement_actor = _retirement_data["approved-by"] if "approved-by" in _retirement_data else ""
+            _retirement_timestamp = _retirement_data["observed-at"] if "observed-at" in _retirement_data else ""
+            _retirement_evidence_sha = _retirement_data["evidence-sha256"] if "evidence-sha256" in _retirement_data else ""
+            _application_count = _retirement_data["application-count"] if "application-count" in _retirement_data else ""
+            _load_balancer_count = _retirement_data["load-balancer-count"] if "load-balancer-count" in _retirement_data else ""
+            _finalizers_cleared = _retirement_data["finalizers-cleared"] if "finalizers-cleared" in _retirement_data else ""
+            _persistent_volumes_reviewed = _retirement_data["persistent-volumes-reviewed"] if "persistent-volumes-reviewed" in _retirement_data else ""
+            _argocd_resource_count = _retirement_data["argocd-resource-count"] if "argocd-resource-count" in _retirement_data else ""
+            _business_pdb_blockers = _retirement_data["business-pdb-blockers"] if "business-pdb-blockers" in _retirement_data else ""
+            _required_ec2_hooks_complete = _retirement_data["required-ec2-hooks-complete"] if "required-ec2-hooks-complete" in _retirement_data else ""
+            _last_node_strategy_ready = _retirement_data["last-node-strategy-ready"] if "last-node-strategy-ready" in _retirement_data else ""
+            _nodeclaim_count = _retirement_data["nodeclaim-count"] if "nodeclaim-count" in _retirement_data else ""
+            _ec2_instance_count = _retirement_data["ec2-instance-count"] if "ec2-instance-count" in _retirement_data else ""
+            _capacity_residual_count = _retirement_data["capacity-residual-count"] if "capacity-residual-count" in _retirement_data else ""
+            _eni_residual_count = _retirement_data["eni-residual-count"] if "eni-residual-count" in _retirement_data else ""
+            _remote_foundation_resource_count = _retirement_data["remote-foundation-resource-count"] if "remote-foundation-resource-count" in _retirement_data else ""
+            _remote_auth_verified = _retirement_data["remote-auth-verified"] if "remote-auth-verified" in _retirement_data else ""
+            _cloud_inventory_reviewed = _retirement_data["cloud-inventory-reviewed"] if "cloud-inventory-reviewed" in _retirement_data else ""
+            _native_protection_disable_approved = _retirement_data["native-deletion-protection-disable-approved"] if "native-deletion-protection-disable-approved" in _retirement_data else ""
+            requested_transition_is_next = stage_rank[requested_stage] == stage_rank[persisted_approved_stage] + 1
+            evidence_identity_valid = retirement_evidence_wrapper_ready and foundation_uid != "" and environment_uid != "" and _retirement_environment == environment_name and _retirement_approved == "true"
+            evidence_generation_valid = _retirement_environment_uid == environment_uid and _retirement_environment_generation == environment_generation and _retirement_foundation_uid == foundation_uid and _retirement_foundation_generation == foundation_generation
+            evidence_transition_valid = requested_transition_is_next and _retirement_from_stage == persisted_approved_stage and _retirement_to_stage == requested_stage and _retirement_inventory_sha == expected_inventory_sha[requested_stage]
+            evidence_audit_valid = len(_retirement_run_id) > 0 and len(_retirement_actor) > 0 and len(_retirement_timestamp) > 0 and regex.match(_retirement_evidence_sha, "^[0-9a-f]{64}$")
+            drain_workloads_evidence_valid = _application_count == "0" and _load_balancer_count == "0" and _finalizers_cleared == "true" and _persistent_volumes_reviewed == "true"
+            remove_gitops_evidence_valid = _argocd_resource_count == "0" and _business_pdb_blockers == "0" and _required_ec2_hooks_complete == "true" and _last_node_strategy_ready == "true"
+            drain_capacity_evidence_valid = _nodeclaim_count == "0" and _ec2_instance_count == "0" and _capacity_residual_count == "0" and _business_pdb_blockers == "0"
+            remove_foundation_evidence_valid = _nodeclaim_count == "0" and _eni_residual_count == "0" and _remote_foundation_resource_count == "0" and _remote_auth_verified == "true"
+            delete_ready_evidence_valid = _nodeclaim_count == "0" and _ec2_instance_count == "0" and _eni_residual_count == "0" and _remote_foundation_resource_count == "0" and _cloud_inventory_reviewed == "true" and _native_protection_disable_approved == "true"
+            stage_evidence_valid = drain_workloads_evidence_valid if requested_stage == "DrainWorkloads" else (remove_gitops_evidence_valid if requested_stage == "RemoveGitOps" else (drain_capacity_evidence_valid if requested_stage == "DrainCapacity" else (remove_foundation_evidence_valid if requested_stage == "RemoveFoundation" else (delete_ready_evidence_valid if requested_stage == "DeleteReady" else True))))
+            retirement_evidence_valid = requested_stage == "Active" or requested_stage == persisted_approved_stage or (evidence_identity_valid and evidence_generation_valid and evidence_transition_valid and evidence_audit_valid and stage_evidence_valid)
+            retirement_stage = requested_stage if retirement_evidence_valid else persisted_approved_stage
+            retirement_cleanup_complete = retirement_stage == "DeleteReady" and delete_ready_evidence_valid
+            foundation_runtime_stage_open = stage_rank[retirement_stage] < stage_rank["RemoveFoundation"]
+            node_pool_stage_open = stage_rank[retirement_stage] < stage_rank["DrainCapacity"]
+            remote_connection_stage_open = stage_rank[retirement_stage] < stage_rank["DeleteReady"]
+            network_approval_stage_open = stage_rank[retirement_stage] < stage_rank["RemoveFoundation"]
+            foundation_usage_stage_open = stage_rank[retirement_stage] < stage_rank["DeleteReady"]
+
+            cluster_membership_tags = {
+                key: "owned" for key in ["kubernetes.io/cluster/" + cluster_name]
+            }
+
+            owner_labels = {
+                "platform.aws.goodnotes.io/managed-by" = "crossplane"
+                "platform.aws.goodnotes.io/environment" = environment_name
+                "platform.aws.goodnotes.io/cluster" = cluster_name
+            }
+
+            kubernetes_provider_config = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "ClusterProviderConfig"
+                metadata = {
+                    name = kubernetes_provider_config_name
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "kubernetes-provider-config"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "remote-provider-config"
+                        "platform.aws.goodnotes.io/provider" = "kubernetes"
+                    }
+                }
+                spec = {
+                    credentials = {
+                        source = "Secret"
+                        secretRef = {
+                            namespace = namespace
+                            name = remote_kubeconfig_secret_name
+                            key = "kubeconfig"
+                        }
+                    }
+                    identity = {
+                        source = "InjectedIdentity"
+                        type = "AWSWebIdentityCredentials"
+                    }
+                }
+            }
+
+            helm_provider_config = {
+                apiVersion = "helm.m.crossplane.io/v1beta1"
+                kind = "ClusterProviderConfig"
+                metadata = {
+                    name = helm_provider_config_name
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "helm-provider-config"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "remote-provider-config"
+                        "platform.aws.goodnotes.io/provider" = "helm"
+                    }
+                }
+                spec = {
+                    credentials = {
+                        source = "Secret"
+                        secretRef = {
+                            namespace = namespace
+                            name = remote_kubeconfig_secret_name
+                            key = "kubeconfig"
+                        }
+                    }
+                    identity = {
+                        source = "InjectedIdentity"
+                        type = "AWSWebIdentityCredentials"
+                    }
+                }
+            }
+
+            karpenter_crds_release = {
+                apiVersion = "helm.m.crossplane.io/v1beta1"
+                kind = "Release"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = "karpenter-crd"
+                        "krm.kcl.dev/composition-resource-name" = "karpenter-crds-release"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "karpenter-crd-owner"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {
+                        kind = "ClusterProviderConfig"
+                        name = helm_provider_config_name
+                    }
+                    forProvider = {
+                        chart = {
+                            name = "karpenter-crd"
+                            repository = "oci://public.ecr.aws/karpenter"
+                            digest = "sha256:c05c566740802506a34f3500b33e2fa3c9254f60469e84e5e294a3bd8adefb9f"
+                            version = karpenter_chart_version
+                        }
+                        namespace = karpenter_namespace
+                        skipCreateNamespace = False
+                        skipCRDs = False
+                        wait = True
+                        waitTimeout = "10m"
+                    }
+                }
+            }
+
+            _karpenter_crd_conditions = ocds["karpenter-crds-release"].Resource?.status?.conditions or [] if "karpenter-crds-release" in ocds else []
+            karpenter_crds_ready = len([
+                condition for condition in _karpenter_crd_conditions
+                if condition.type == "Ready" and condition.status == "True"
+            ]) > 0
+            _karpenter_post_crd_names = [
+                "karpenter-controller-release",
+                "ec2-node-class",
+                "spot-general-node-pool",
+                "cilium-release",
+            ]
+            karpenter_stage_open = foundation_runtime_stage_open and (karpenter_crds_ready or len([
+                name for name in _karpenter_post_crd_names if name in ocds
+            ]) > 0)
+
+            karpenter_controller_release = {
+                apiVersion = "helm.m.crossplane.io/v1beta1"
+                kind = "Release"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = "karpenter"
+                        "krm.kcl.dev/composition-resource-name" = "karpenter-controller-release"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "karpenter-controller"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {
+                        kind = "ClusterProviderConfig"
+                        name = helm_provider_config_name
+                    }
+                    forProvider = {
+                        chart = {
+                            name = "karpenter"
+                            repository = "oci://public.ecr.aws/karpenter"
+                            digest = "sha256:91434e00fb102d6ee0d1bd34a4457a32fe01a8fa833fe1a2a37da4f50272079b"
+                            version = karpenter_chart_version
+                        }
+                        namespace = karpenter_namespace
+                        skipCreateNamespace = False
+                        skipCRDs = True
+                        wait = True
+                        waitTimeout = "15m"
+                        valuesFrom = [{
+                            secretKeyRef = {
+                                key = "karpenter-values"
+                                name = remote_kubeconfig_secret_name
+                            }
+                        }]
+                        values = {
+                            affinity = {
+                                nodeAffinity = {
+                                    requiredDuringSchedulingIgnoredDuringExecution = {
+                                        nodeSelectorTerms = [{
+                                            matchExpressions = [{
+                                                key = "karpenter.sh/nodepool"
+                                                operator = "DoesNotExist"
+                                            }]
+                                        }]
+                                    }
+                                }
+                                podAntiAffinity = {
+                                    requiredDuringSchedulingIgnoredDuringExecution = []
+                                    preferredDuringSchedulingIgnoredDuringExecution = [{
+                                        weight = 100
+                                        podAffinityTerm = {
+                                            topologyKey = "kubernetes.io/hostname"
+                                        }
+                                    }]
+                                }
+                            }
+                            controller = {
+                                image = {
+                                    repository = "public.ecr.aws/karpenter/controller"
+                                    tag = "1.14.1"
+                                    digest = "sha256:445baefaaa689029cc12ac1f659b916b0b82fb14308ce536f8521fcf079116fa"
+                                }
+                                env = [
+                                    {name = "AWS_REGION", value = params.region},
+                                    {name = "AWS_DEFAULT_REGION", value = params.region},
+                                    {name = "AWS_EC2_METADATA_DISABLED", value = "true"},
+                                ]
+                                resources = {
+                                    requests = {cpu = "1", memory = "1Gi"}
+                                    limits = {cpu = "1", memory = "1Gi"}
+                                }
+                            }
+                            dnsPolicy = "Default"
+                            fullnameOverride = "karpenter"
+                            hostNetwork = False
+                            podDisruptionBudget = {
+                                name = "karpenter"
+                                maxUnavailable = 1
+                            }
+                            podLabels = {
+                                "app.kubernetes.io/instance" = "karpenter"
+                                "app.kubernetes.io/name" = "karpenter"
+                            }
+                            priorityClassName = "system-cluster-critical"
+                            replicas = 2
+                            serviceAccount = {
+                                create = True
+                                name = "karpenter"
+                            }
+                            settings = {
+                                featureGates = {
+                                    capacityBuffer = False
+                                    nodeOverlay = False
+                                    nodeRepair = False
+                                    reservedCapacity = False
+                                    spotToSpotConsolidation = False
+                                    staticCapacity = False
+                                }
+                            }
+                            topologySpreadConstraints = [{
+                                maxSkew = 1
+                                topologyKey = "topology.kubernetes.io/zone"
+                                whenUnsatisfiable = "ScheduleAnyway"
+                            }]
+                        }
+                    }
+                }
+            }
+
+            ec2_node_class_manifest = {
+                apiVersion = "karpenter.k8s.aws/v1"
+                kind = "EC2NodeClass"
+                metadata = {
+                    name = karpenter_node_class_name
+                    labels = {
+                        "platform.aws.goodnotes.io/environment" = environment_name
+                        "platform.aws.goodnotes.io/managed-by" = "crossplane"
+                    }
+                }
+                spec = {
+                    amiFamily = "AL2023"
+                    amiSelectorTerms = [{alias = karpenter_node_image_alias}]
+                    blockDeviceMappings = [{
+                        deviceName = "/dev/xvda"
+                        rootVolume = True
+                        ebs = {
+                            deleteOnTermination = True
+                            encrypted = True
+                            volumeSize = "40Gi"
+                            volumeType = "gp3"
+                        }
+                    }]
+                    instanceProfile = karpenter_instance_profile_name
+                    metadataOptions = {
+                        httpEndpoint = "enabled"
+                        httpProtocolIPv6 = "disabled"
+                        httpPutResponseHopLimit = 1
+                        httpTokens = "required"
+                    }
+                    securityGroupSelectorTerms = [{
+                        tags = {
+                            **cluster_membership_tags
+                            "karpenter.sh/discovery" = environment_name
+                            "platform.aws.goodnotes.io/environment" = environment_name
+                        }
+                    }]
+                    subnetSelectorTerms = [{
+                        tags = {
+                            "karpenter.sh/discovery" = environment_name
+                            "platform.aws.goodnotes.io/environment" = environment_name
+                            "platform.aws.goodnotes.io/subnet-visibility" = "private"
+                        }
+                    }]
+                    tags = {
+                        Name = cluster_name + "-spot-general"
+                        "karpenter.sh/discovery" = environment_name
+                        "platform.aws.goodnotes.io/environment" = environment_name
+                    }
+                }
+            }
+            ec2_node_class = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "Object"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "ec2-node-class"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "karpenter-ec2-node-class"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {
+                        kind = "ClusterProviderConfig"
+                        name = kubernetes_provider_config_name
+                    }
+                    forProvider = {manifest = ec2_node_class_manifest}
+                    readiness = {
+                        policy = "DeriveFromCelQuery"
+                        celQuery = "object.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')"
+                    }
+                }
+            }
+
+            spot_general_node_pool_manifest = {
+                apiVersion = "karpenter.sh/v1"
+                kind = "NodePool"
+                metadata = {
+                    name = karpenter_node_pool_name
+                    labels = {
+                        "platform.aws.goodnotes.io/environment" = environment_name
+                        "platform.aws.goodnotes.io/managed-by" = "crossplane"
+                    }
+                }
+                spec = {
+                    disruption = {
+                        budgets = [{nodes = "1"}]
+                        consolidateAfter = "5m"
+                        consolidationPolicy = "WhenEmpty"
+                    }
+                    limits = {
+                        cpu = params.compute.limits.cpu
+                        memory = params.compute.limits.memory
+                    }
+                    template = {
+                        metadata = {
+                            labels = {
+                                "platform.aws.goodnotes.io/capacity-class" = "spot-general"
+                                "platform.aws.goodnotes.io/environment" = environment_name
+                            }
+                        }
+                        spec = {
+                            expireAfter = "720h"
+                            nodeClassRef = {
+                                group = "karpenter.k8s.aws"
+                                kind = "EC2NodeClass"
+                                name = karpenter_node_class_name
+                            }
+                            requirements = [
+                                {key = "karpenter.sh/capacity-type", operator = "In", values = ["spot"]},
+                                {key = "kubernetes.io/arch", operator = "In", values = ["amd64"]},
+                                {key = "kubernetes.io/os", operator = "In", values = ["linux"]},
+                                {key = "karpenter.k8s.aws/instance-category", operator = "In", values = ["c", "m", "r"]},
+                                {key = "karpenter.k8s.aws/instance-hypervisor", operator = "In", values = ["nitro"]},
+                                {key = "karpenter.k8s.aws/instance-cpu", operator = "In", values = ["2", "4", "8"]},
+                                {key = "topology.kubernetes.io/zone", operator = "In", values = params.availabilityZones},
+                            ]
+                            startupTaints = [{
+                                effect = "NoExecute"
+                                key = "node.cilium.io/agent-not-ready"
+                                value = "true"
+                            }]
+                        }
+                    }
+                }
+            }
+            spot_general_node_pool = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "Object"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "spot-general-node-pool"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "karpenter-node-pool"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {
+                        kind = "ClusterProviderConfig"
+                        name = kubernetes_provider_config_name
+                    }
+                    forProvider = {manifest = spot_general_node_pool_manifest}
+                    readiness = {
+                        policy = "DeriveFromCelQuery"
+                        celQuery = "object.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')"
+                    }
+                }
+            }
+
+            cilium_release = {
+                apiVersion = "helm.m.crossplane.io/v1beta1"
+                kind = "Release"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = "cilium"
+                        "krm.kcl.dev/composition-resource-name" = "cilium-release"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "cilium-cni"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {
+                        kind = "ClusterProviderConfig"
+                        name = helm_provider_config_name
+                    }
+                    forProvider = {
+                        chart = {
+                            name = "cilium"
+                            repository = "oci://quay.io/cilium/charts"
+                            digest = "sha256:906ce40d35daad838d12add8a5ba7033e767767f51799a93c7eace2cec9cdc05"
+                            version = cilium_chart_version
+                        }
+                        namespace = cilium_namespace
+                        skipCreateNamespace = True
+                        skipCRDs = True
+                        wait = True
+                        waitTimeout = "20m"
+                        valuesFrom = [{
+                            secretKeyRef = {
+                                key = "cilium-values"
+                                name = remote_kubeconfig_secret_name
+                            }
+                        }]
+                        values = {
+                            agentNotReadyTaintKey = "node.cilium.io/agent-not-ready"
+                            autoDirectNodeRoutes = False
+                            cluster = {name = cluster_name}
+                            cni = {
+                                chainingMode = "none"
+                                exclusive = True
+                                install = True
+                                iptablesRemoveAWSRules = True
+                                uninstall = False
+                            }
+                            dnsPolicy = "Default"
+                            eni = {
+                                awsEnablePrefixDelegation = False
+                                awsReleaseExcessIPs = True
+                                enabled = True
+                                eniTags = {
+                                    "io.cilium/cilium-managed" = "true"
+                                    "io.cilium/cluster-name" = cluster_name
+                                    "platform.aws.goodnotes.io/environment" = environment_name
+                                }
+                                gcInterval = "5m"
+                                gcTags = {
+                                    "io.cilium/cilium-managed" = "true"
+                                    "io.cilium/cluster-name" = cluster_name
+                                    "platform.aws.goodnotes.io/environment" = environment_name
+                                }
+                                instanceTagsFilter = [
+                                    "eks:eks-cluster-name=" + cluster_name,
+                                    "platform.aws.goodnotes.io/environment=" + environment_name,
+                                ]
+                                nodeSpec = {
+                                    deleteOnTermination = True
+                                    securityGroupTags = [
+                                        "karpenter.sh/discovery=" + environment_name,
+                                        "kubernetes.io/cluster/" + cluster_name + "=owned",
+                                        "platform.aws.goodnotes.io/environment=" + environment_name,
+                                    ]
+                                    subnetTags = [
+                                        "kubernetes.io/cluster/" + cluster_name + "=shared",
+                                        "platform.aws.goodnotes.io/environment=" + environment_name,
+                                        "platform.aws.goodnotes.io/subnet-visibility=private",
+                                    ]
+                                }
+                                subnetTagsFilter = [
+                                    "kubernetes.io/cluster/" + cluster_name + "=shared",
+                                    "platform.aws.goodnotes.io/environment=" + environment_name,
+                                    "platform.aws.goodnotes.io/subnet-visibility=private",
+                                ]
+                            }
+                            hubble = {enabled = False}
+                            image = {
+                                digest = "sha256:ae9ea21f7427fe24bc6ea7247eb552157a1b0a431744045d3f641545ca71d11b"
+                                pullPolicy = "IfNotPresent"
+                                repository = "quay.io/cilium/cilium"
+                                tag = "v1.20.1"
+                                useDigest = True
+                            }
+                            ipam = {mode = "eni"}
+                            ipv4 = {enabled = True}
+                            ipv4NativeRoutingCIDR = params.nativeRoutingCIDR
+                            ipv6 = {enabled = False}
+                            kubeProxyReplacement = True
+                            nodeSelector = {
+                                "karpenter.sh/nodepool" = karpenter_node_pool_name
+                                "kubernetes.io/os" = "linux"
+                            }
+                            nodeinit = {enabled = False}
+                            operator = {
+                                affinity = {
+                                    podAntiAffinity = {
+                                        requiredDuringSchedulingIgnoredDuringExecution = []
+                                        preferredDuringSchedulingIgnoredDuringExecution = [{
+                                            weight = 100
+                                            podAffinityTerm = {
+                                                labelSelector = {
+                                                    matchLabels = {"io.cilium/app" = "operator"}
+                                                }
+                                                topologyKey = "kubernetes.io/hostname"
+                                            }
+                                        }]
+                                    }
+                                }
+                                dnsPolicy = "Default"
+                                enabled = True
+                                extraEnv = [
+                                    {name = "AWS_REGION", value = params.region},
+                                    {name = "AWS_DEFAULT_REGION", value = params.region},
+                                    {name = "AWS_EC2_METADATA_DISABLED", value = "true"},
+                                    {name = "AWS_STS_REGIONAL_ENDPOINTS", value = "regional"},
+                                ]
+                                hostNetwork = True
+                                image = {
+                                    awsDigest = "sha256:7cf0cb0e6584f72ca8de951a1be03829f69fcaeba69dc6c7856fc4470545acd7"
+                                    pullPolicy = "IfNotPresent"
+                                    repository = "quay.io/cilium/operator"
+                                    tag = "v1.20.1"
+                                    useDigest = True
+                                }
+                                nodeSelector = {
+                                    "karpenter.sh/nodepool" = karpenter_node_pool_name
+                                    "kubernetes.io/os" = "linux"
+                                }
+                                podDisruptionBudget = {
+                                    enabled = True
+                                    maxUnavailable = 1
+                                    minAvailable = None
+                                }
+                                removeNodeTaints = True
+                                replicas = 2
+                                resources = {
+                                    limits = {cpu = "500m", memory = "512Mi"}
+                                    requests = {cpu = "100m", memory = "256Mi"}
+                                }
+                                setNodeNetworkStatus = True
+                                setNodeTaints = True
+                                skipCRDCreation = False
+                                tolerations = [
+                                    {key = "node.kubernetes.io/not-ready", operator = "Exists"},
+                                    {key = "node.cloudprovider.kubernetes.io/uninitialized", operator = "Exists"},
+                                ]
+                                topologySpreadConstraints = [{
+                                    maxSkew = 1
+                                    topologyKey = "topology.kubernetes.io/zone"
+                                    whenUnsatisfiable = "ScheduleAnyway"
+                                }]
+                                unmanagedPodWatcher = {
+                                    intervalSeconds = 15
+                                    restart = True
+                                    selector = "k8s-app=kube-dns"
+                                }
+                            }
+                            resources = {
+                                limits = {cpu = "1", memory = "1Gi"}
+                                requests = {cpu = "100m", memory = "128Mi"}
+                            }
+                            routingMode = "native"
+                            serviceAccounts = {
+                                cilium = {create = True, name = "cilium"}
+                                operator = {create = True, name = "cilium-operator"}
+                            }
+                            tolerations = [
+                                {key = "node.cilium.io/agent-not-ready", operator = "Exists"},
+                                {key = "node.kubernetes.io/not-ready", operator = "Exists"},
+                                {key = "node.cloudprovider.kubernetes.io/uninitialized", operator = "Exists"},
+                            ]
+                        }
+                    }
+                }
+            }
+
+            node_pool_resources = [spot_general_node_pool] if node_pool_stage_open else []
+            karpenter_post_crd_resources = [
+                karpenter_controller_release,
+                ec2_node_class,
+                *node_pool_resources,
+                cilium_release,
+            ] if karpenter_stage_open else []
+
+            remote_auth_probe = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "Object"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "remote-auth-probe"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "remote-auth-probe"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["Observe"]
+                    providerConfigRef = {
+                        kind = "ClusterProviderConfig"
+                        name = kubernetes_provider_config_name
+                    }
+                    forProvider = {
+                        manifest = {
+                            apiVersion = "v1"
+                            kind = "Namespace"
+                            metadata = {
+                                name = "kube-system"
+                            }
+                        }
+                    }
+                    readiness = {
+                        policy = "DeriveFromCelQuery"
+                        celQuery = "object.status.phase == 'Active'"
+                    }
+                }
+            }
+
+            _remote_namespace_manifest = ocds["remote-auth-probe"].Resource?.status?.atProvider?.manifest or {} if "remote-auth-probe" in ocds else {}
+            remote_namespace_uid = _remote_namespace_manifest?.metadata?.uid or ""
+            network_uat_approval = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "Object"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "network-uat-approval"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "external-runtime-evidence"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["Observe"]
+                    providerConfigRef = {
+                        kind = "ClusterProviderConfig"
+                        name = kubernetes_provider_config_name
+                    }
+                    forProvider = {
+                        manifest = {
+                            apiVersion = "v1"
+                            kind = "ConfigMap"
+                            metadata = {
+                                name = network_uat_approval_name
+                                namespace = "kube-system"
+                            }
+                        }
+                    }
+                    readiness = {
+                        policy = "DeriveFromCelQuery"
+                        celQuery = "object.metadata.labels['platform.aws.goodnotes.io/environment'] == '" + environment_name + "' && object.metadata.labels['platform.aws.goodnotes.io/cluster'] == '" + cluster_name + "' && object.data['approved'] == 'true' && object.data['foundation-uid'] == '" + foundation_uid + "' && object.data['foundation-generation'] == '" + foundation_generation + "' && object.data['kube-system-uid'] == '" + remote_namespace_uid + "' && size(object.data['run-id']) > 0 && size(object.data['approved-by']) > 0 && size(object.data['observed-at']) > 0 && object.data['evidence-sha256'].matches('^[0-9a-f]{64}$')"
+                    }
+                }
+            }
+
+            foundation_uses_cluster = {
+                apiVersion = "protection.crossplane.io/v1beta1"
+                kind = "ClusterUsage"
+                metadata = {
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "foundation-uses-cluster"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "deletion-order"
+                    }
+                }
+                spec = {
+                    replayDeletion = True
+                    reason = "Remote ProviderConfigs and cleanup must remain usable until the foundation has removed all target-cluster resources."
+                    by = {
+                        apiVersion = "platform.aws.goodnotes.io/v1alpha1"
+                        kind = "XClusterFoundation"
+                        resourceRef = {name = foundation_xr_name}
+                    }
+                    of = {
+                        apiVersion = "platform.aws.goodnotes.io/v1alpha1"
+                        kind = "XEKSCluster"
+                        resourceRef = {name = cluster_name}
+                    }
+                }
+            }
+
+            _probe_conditions = ocds["remote-auth-probe"].Resource?.status?.conditions or [] if "remote-auth-probe" in ocds else []
+            remote_auth_ready = len([
+                condition for condition in _probe_conditions
+                if condition.type == "Ready" and condition.status == "True"
+            ]) > 0
+            remote_auth_failed = len([
+                condition for condition in _probe_conditions
+                if condition.type == "Ready" and condition.status == "False"
+            ]) > 0
+
+            _karpenter_controller_conditions = ocds["karpenter-controller-release"].Resource?.status?.conditions or [] if "karpenter-controller-release" in ocds else []
+            _ec2_node_class_conditions = ocds["ec2-node-class"].Resource?.status?.conditions or [] if "ec2-node-class" in ocds else []
+            _node_pool_conditions = ocds["spot-general-node-pool"].Resource?.status?.conditions or [] if "spot-general-node-pool" in ocds else []
+            karpenter_controller_ready = len([
+                condition for condition in _karpenter_controller_conditions
+                if condition.type == "Ready" and condition.status == "True"
+            ]) > 0
+            ec2_node_class_ready = len([
+                condition for condition in _ec2_node_class_conditions
+                if condition.type == "Ready" and condition.status == "True"
+            ]) > 0
+            node_pool_ready = len([
+                condition for condition in _node_pool_conditions
+                if condition.type == "Ready" and condition.status == "True"
+            ]) > 0
+            spot_capacity_unavailable = len([
+                condition for condition in _node_pool_conditions
+                if condition.type == "Ready" and condition.status == "False" and condition.reason in ["InsufficientInstanceCapacity", "InsufficientSpotCapacity"]
+            ]) > 0
+            karpenter_ready = karpenter_controller_ready and ec2_node_class_ready and (node_pool_ready or not node_pool_stage_open)
+            _cilium_conditions = ocds["cilium-release"].Resource?.status?.conditions or [] if "cilium-release" in ocds else []
+            cilium_ready = len([
+                condition for condition in _cilium_conditions
+                if condition.type == "Ready" and condition.status == "True"
+            ]) > 0
+            cilium_failed = len([
+                condition for condition in _cilium_conditions
+                if condition.type == "Ready" and condition.status == "False"
+            ]) > 0
+
+            _network_approval_conditions = ocds["network-uat-approval"].Resource?.status?.conditions or [] if "network-uat-approval" in ocds else []
+            network_approval_wrapper_ready = len([
+                condition for condition in _network_approval_conditions
+                if condition.type == "Ready" and condition.status == "True"
+            ]) > 0
+            _network_approval_manifest = ocds["network-uat-approval"].Resource?.status?.atProvider?.manifest or {} if "network-uat-approval" in ocds else {}
+            _network_approval_labels = _network_approval_manifest?.metadata?.labels or {}
+            _network_approval_data = _network_approval_manifest?.data or {}
+            _approval_environment = _network_approval_labels["platform.aws.goodnotes.io/environment"] if "platform.aws.goodnotes.io/environment" in _network_approval_labels else ""
+            _approval_cluster = _network_approval_labels["platform.aws.goodnotes.io/cluster"] if "platform.aws.goodnotes.io/cluster" in _network_approval_labels else ""
+            _approval_flag = _network_approval_data["approved"] if "approved" in _network_approval_data else ""
+            _approval_foundation_uid = _network_approval_data["foundation-uid"] if "foundation-uid" in _network_approval_data else ""
+            _approval_foundation_generation = _network_approval_data["foundation-generation"] if "foundation-generation" in _network_approval_data else ""
+            _approval_namespace_uid = _network_approval_data["kube-system-uid"] if "kube-system-uid" in _network_approval_data else ""
+            _approval_run_id = _network_approval_data["run-id"] if "run-id" in _network_approval_data else ""
+            _approval_actor = _network_approval_data["approved-by"] if "approved-by" in _network_approval_data else ""
+            _approval_timestamp = _network_approval_data["observed-at"] if "observed-at" in _network_approval_data else ""
+            _approval_evidence_sha = _network_approval_data["evidence-sha256"] if "evidence-sha256" in _network_approval_data else ""
+            network_approval_identity_valid = foundation_uid != "" and remote_namespace_uid != "" and _approval_environment == environment_name and _approval_cluster == cluster_name
+            network_approval_binding_valid = _approval_flag == "true" and _approval_foundation_uid == foundation_uid and _approval_foundation_generation == foundation_generation and _approval_namespace_uid == remote_namespace_uid
+            network_approval_evidence_valid = len(_approval_run_id) > 0 and len(_approval_actor) > 0 and len(_approval_timestamp) > 0 and regex.match(_approval_evidence_sha, "^[0-9a-f]{64}$")
+            network_approval_valid = cilium_ready and network_approval_wrapper_ready and network_approval_identity_valid and network_approval_binding_valid and network_approval_evidence_valid
+
+            argocd_values = {
+                createAggregateRoles = False
+                createClusterRoles = False
+                crds = {
+                    annotations = {"argocd.argoproj.io/sync-options" = "ServerSideApply=true"}
+                    install = True
+                    keep = False
+                }
+                global = {
+                    affinity = {
+                        nodeAffinity = {matchExpressions = [], type = "hard"}
+                        podAntiAffinity = "soft"
+                    }
+                    image = {
+                        imagePullPolicy = "IfNotPresent"
+                        repository = "quay.io/argoproj/argocd"
+                        tag = "v3.5.1@sha256:0deb1a1c917629b960ead995ae3b6069450a866992676599658687ef9a641ee8"
+                    }
+                    networkPolicy = {create = True, defaultDenyIngress = False}
+                    nodeSelector = {
+                        "karpenter.sh/nodepool" = karpenter_node_pool_name
+                        "kubernetes.io/os" = "linux"
+                    }
+                    tolerations = []
+                    topologySpreadConstraints = [{
+                        maxSkew = 1
+                        topologyKey = "topology.kubernetes.io/zone"
+                        whenUnsatisfiable = "ScheduleAnyway"
+                    }]
+                }
+                configs = {
+                    cm = {
+                        "admin.enabled" = False
+                        "application.instanceLabelKey" = "argocd.argoproj.io/instance"
+                        "application.sync.impersonation.enabled" = False
+                        "exec.enabled" = False
+                        "resource.exclusions" = "- apiGroups:\n  - apiextensions.crossplane.io\n  - platform.aws.goodnotes.io\n  - helm.crossplane.io\n  - kubernetes.crossplane.io\n  kinds:\n  - '*'\n- apiGroups:\n  - karpenter.sh\n  kinds:\n  - NodeClaim\n  - NodePool\n- apiGroups:\n  - karpenter.k8s.aws\n  kinds:\n  - EC2NodeClass\n- apiGroups:\n  - cilium.io\n  kinds:\n  - '*'\n- apiGroups:\n  - argoproj.io\n  kinds:\n  - ApplicationSet\n"
+                    }
+                    rbac = {
+                        "policy.csv" = "p, role:business, applications, get, business/*, allow\np, role:business, applications, sync, business/*, allow\np, role:business, projects, get, business, allow\np, role:business, logs, get, business/*, allow\n"
+                        "policy.default" = ""
+                        "policy.matchMode" = "glob"
+                        scopes = "[groups]"
+                    }
+                }
+                controller = {
+                    pdb = {enabled = True, maxUnavailable = 1}
+                    replicas = 1
+                    resources = {
+                        limits = {cpu = "500m", memory = "512Mi"}
+                        requests = {cpu = "200m", memory = "256Mi"}
+                    }
+                }
+                dex = {enabled = False}
+                applicationSet = {replicas = 0}
+                notifications = {enabled = False}
+                commitServer = {enabled = False}
+                "redis-ha" = {enabled = False}
+                redis = {
+                    enabled = True
+                    image = {
+                        imagePullPolicy = "IfNotPresent"
+                        repository = "ecr-public.aws.com/docker/library/redis"
+                        tag = "8.6.4-alpine@sha256:2cc044fc5a07c9b701f8f1255a309ae9ad7856e694ac03513bf3648c01e40763"
+                    }
+                    pdb = {enabled = True, maxUnavailable = 1}
+                    resources = {
+                        limits = {cpu = "200m", memory = "128Mi"}
+                        requests = {cpu = "50m", memory = "64Mi"}
+                    }
+                }
+                redisSecretInit = {
+                    enabled = True
+                    resources = {
+                        limits = {cpu = "100m", memory = "128Mi"}
+                        requests = {cpu = "10m", memory = "64Mi"}
+                    }
+                }
+                repoServer = {
+                    pdb = {enabled = True, maxUnavailable = 1}
+                    replicas = 1
+                    resources = {
+                        limits = {cpu = "500m", memory = "512Mi"}
+                        requests = {cpu = "100m", memory = "256Mi"}
+                    }
+                }
+                server = {
+                    autoscaling = {enabled = False}
+                    extensions = {enabled = False}
+                    ingress = {enabled = False}
+                    pdb = {enabled = True, maxUnavailable = 1}
+                    replicas = 1
+                    resources = {
+                        limits = {cpu = "250m", memory = "256Mi"}
+                        requests = {cpu = "50m", memory = "128Mi"}
+                    }
+                    service = {type = "ClusterIP"}
+                }
+            }
+
+            gitops_apps_namespace = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "Object"
+                metadata = {
+                    namespace = namespace
+                    annotations = {"krm.kcl.dev/composition-resource-name" = "gitops-apps-namespace"}
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "gitops-destination-namespace"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {kind = "ClusterProviderConfig", name = kubernetes_provider_config_name}
+                    forProvider = {manifest = {
+                        apiVersion = "v1"
+                        kind = "Namespace"
+                        metadata = {
+                            name = gitops_destination_namespace
+                            labels = {
+                                "platform.aws.goodnotes.io/environment" = environment_name
+                                "platform.aws.goodnotes.io/managed-by" = "crossplane"
+                            }
+                        }
+                    }}
+                }
+            }
+
+            argocd_apps_role = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "Object"
+                metadata = {
+                    namespace = namespace
+                    annotations = {"krm.kcl.dev/composition-resource-name" = "argocd-apps-role"}
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "gitops-namespaced-rbac"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {kind = "ClusterProviderConfig", name = kubernetes_provider_config_name}
+                    forProvider = {manifest = {
+                        apiVersion = "rbac.authorization.k8s.io/v1"
+                        kind = "Role"
+                        metadata = {name = "argocd-business-manager", namespace = gitops_destination_namespace}
+                        rules = [
+                            {apiGroups = ["apps"], resources = ["deployments"], verbs = ["create", "delete", "get", "list", "patch", "update", "watch"]},
+                            {apiGroups = ["apps"], resources = ["replicasets"], verbs = ["get", "list", "watch"]},
+                            {apiGroups = [""], resources = ["configmaps", "serviceaccounts", "services"], verbs = ["create", "delete", "get", "list", "patch", "update", "watch"]},
+                            {apiGroups = [""], resources = ["events", "pods"], verbs = ["get", "list", "watch"]},
+                            {apiGroups = ["batch"], resources = ["jobs"], verbs = ["create", "delete", "get", "list", "patch", "update", "watch"]},
+                            {apiGroups = ["networking.k8s.io"], resources = ["networkpolicies"], verbs = ["create", "delete", "get", "list", "patch", "update", "watch"]},
+                        ]
+                    }}
+                }
+            }
+
+            argocd_apps_role_binding = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "Object"
+                metadata = {
+                    namespace = namespace
+                    annotations = {"krm.kcl.dev/composition-resource-name" = "argocd-apps-rolebinding"}
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "gitops-namespaced-rbac"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {kind = "ClusterProviderConfig", name = kubernetes_provider_config_name}
+                    forProvider = {manifest = {
+                        apiVersion = "rbac.authorization.k8s.io/v1"
+                        kind = "RoleBinding"
+                        metadata = {name = "argocd-business-manager", namespace = gitops_destination_namespace}
+                        roleRef = {apiGroup = "rbac.authorization.k8s.io", kind = "Role", name = "argocd-business-manager"}
+                        subjects = [{kind = "ServiceAccount", name = "argocd-application-controller", namespace = argocd_namespace}]
+                    }}
+                }
+            }
+
+            argocd_release = {
+                apiVersion = "helm.m.crossplane.io/v1beta1"
+                kind = "Release"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = "argocd"
+                        "krm.kcl.dev/composition-resource-name" = "argocd-release"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "argocd-controller"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {kind = "ClusterProviderConfig", name = helm_provider_config_name}
+                    forProvider = {
+                        chart = {
+                            name = "argo-cd"
+                            repository = "oci://ghcr.io/argoproj/argo-helm"
+                            digest = "sha256:8ff18ee7a22670305555167ea31f24a88e2f912cf0a872f852e1880886d4c308"
+                            version = argocd_chart_version
+                        }
+                        namespace = argocd_namespace
+                        skipCreateNamespace = False
+                        skipCRDs = False
+                        wait = True
+                        waitTimeout = "15m"
+                        values = argocd_values
+                    }
+                }
+            }
+
+            _argocd_base_names = ["gitops-apps-namespace", "argocd-apps-role", "argocd-apps-rolebinding", "argocd-release"]
+            argocd_base_observed = len([name for name in _argocd_base_names if name in ocds]) > 0
+            argocd_lifecycle_open = retirement_stage in ["Active", "DrainWorkloads"]
+            argocd_stage_open = argocd_lifecycle_open and ((network_approval_valid and cilium_ready) or argocd_base_observed)
+            argocd_base_resources = [
+                gitops_apps_namespace,
+                argocd_apps_role,
+                argocd_apps_role_binding,
+                argocd_release,
+            ] if argocd_stage_open else []
+
+            _argocd_release_conditions = ocds["argocd-release"].Resource?.status?.conditions or [] if "argocd-release" in ocds else []
+            _apps_namespace_conditions = ocds["gitops-apps-namespace"].Resource?.status?.conditions or [] if "gitops-apps-namespace" in ocds else []
+            _apps_role_conditions = ocds["argocd-apps-role"].Resource?.status?.conditions or [] if "argocd-apps-role" in ocds else []
+            _apps_role_binding_conditions = ocds["argocd-apps-rolebinding"].Resource?.status?.conditions or [] if "argocd-apps-rolebinding" in ocds else []
+            argocd_release_ready = len([condition for condition in _argocd_release_conditions if condition.type == "Ready" and condition.status == "True"]) > 0
+            apps_namespace_ready = len([condition for condition in _apps_namespace_conditions if condition.type == "Ready" and condition.status == "True"]) > 0
+            apps_role_ready = len([condition for condition in _apps_role_conditions if condition.type == "Ready" and condition.status == "True"]) > 0
+            apps_role_binding_ready = len([condition for condition in _apps_role_binding_conditions if condition.type == "Ready" and condition.status == "True"]) > 0
+            argocd_prerequisites_ready = argocd_release_ready and apps_namespace_ready and apps_role_ready and apps_role_binding_ready
+
+            argocd_project_manifest = {
+                apiVersion = "argoproj.io/v1alpha1"
+                kind = "AppProject"
+                metadata = {
+                    name = argocd_project_name
+                    namespace = argocd_namespace
+                    labels = {
+                        "platform.aws.goodnotes.io/environment" = environment_name
+                        "platform.aws.goodnotes.io/managed-by" = "crossplane"
+                    }
+                }
+                spec = {
+                    clusterResourceBlacklist = [{group = "*", kind = "*"}]
+                    destinations = [{namespace = gitops_destination_namespace, server = "https://kubernetes.default.svc"}]
+                    namespaceResourceWhitelist = [
+                        {group = "", kind = "ConfigMap"},
+                        {group = "", kind = "Service"},
+                        {group = "", kind = "ServiceAccount"},
+                        {group = "apps", kind = "Deployment"},
+                        {group = "batch", kind = "Job"},
+                        {group = "networking.k8s.io", kind = "NetworkPolicy"},
+                    ]
+                    orphanedResources = {warn = True}
+                    sourceRepos = [params.gitOps.repositoryURL] if gitops_configured else []
+                }
+            }
+            argocd_project = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "Object"
+                metadata = {
+                    namespace = namespace
+                    annotations = {"krm.kcl.dev/composition-resource-name" = "argocd-project"}
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "gitops-policy"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {kind = "ClusterProviderConfig", name = kubernetes_provider_config_name}
+                    forProvider = {manifest = argocd_project_manifest}
+                }
+            }
+            argocd_project_observed = "argocd-project" in ocds or "gitops-bootstrap" in ocds
+            argocd_project_stage_open = argocd_stage_open and (argocd_prerequisites_ready or argocd_project_observed)
+            argocd_project_resources = [argocd_project] if argocd_project_stage_open else []
+            _argocd_project_conditions = ocds["argocd-project"].Resource?.status?.conditions or [] if "argocd-project" in ocds else []
+            argocd_project_ready = len([condition for condition in _argocd_project_conditions if condition.type == "Ready" and condition.status == "True"]) > 0
+
+            gitops_bootstrap_manifest = {
+                apiVersion = "argoproj.io/v1alpha1"
+                kind = "Application"
+                metadata = {
+                    name = gitops_bootstrap_name
+                    namespace = argocd_namespace
+                    finalizers = ["resources-finalizer.argocd.argoproj.io/foreground"]
+                    annotations = {
+                        "platform.aws.goodnotes.io/repository-credentials-secret" = params.gitOps.credentialsSecretRef.name if gitops_configured else ""
+                    }
+                    labels = {
+                        "platform.aws.goodnotes.io/environment" = environment_name
+                        "platform.aws.goodnotes.io/managed-by" = "crossplane"
+                    }
+                }
+                spec = {
+                    destination = {namespace = gitops_destination_namespace, server = "https://kubernetes.default.svc"}
+                    project = argocd_project_name
+                    source = {
+                        path = params.gitOps.path if gitops_configured else ""
+                        repoURL = params.gitOps.repositoryURL if gitops_configured else ""
+                        targetRevision = params.gitOps.revision if gitops_configured else ""
+                    }
+                    syncPolicy = {
+                        automated = {allowEmpty = False, prune = True, selfHeal = True}
+                        syncOptions = [
+                            "CreateNamespace=false",
+                            "PruneLast=true",
+                            "PrunePropagationPolicy=foreground",
+                            "RespectIgnoreDifferences=true",
+                        ]
+                    }
+                }
+            }
+            gitops_bootstrap = {
+                apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                kind = "Object"
+                metadata = {
+                    namespace = namespace
+                    annotations = {"krm.kcl.dev/composition-resource-name" = "gitops-bootstrap"}
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "gitops-bootstrap-spec-owner"
+                    }
+                }
+                spec = {
+                    managementPolicies = ["*"]
+                    providerConfigRef = {kind = "ClusterProviderConfig", name = kubernetes_provider_config_name}
+                    forProvider = {manifest = gitops_bootstrap_manifest}
+                    readiness = {
+                        policy = "DeriveFromCelQuery"
+                        celQuery = "object.status.health.status == 'Healthy' && object.status.sync.status == 'Synced'"
+                    }
+                }
+            }
+            gitops_bootstrap_observed = "gitops-bootstrap" in ocds
+            gitops_bootstrap_stage_open = gitops_configured and retirement_stage == "Active" and argocd_stage_open and (argocd_project_ready or gitops_bootstrap_observed)
+            gitops_bootstrap_resources = [gitops_bootstrap] if gitops_bootstrap_stage_open else []
+            _gitops_bootstrap_conditions = ocds["gitops-bootstrap"].Resource?.status?.conditions or [] if "gitops-bootstrap" in ocds else []
+            gitops_bootstrap_ready = len([condition for condition in _gitops_bootstrap_conditions if condition.type == "Ready" and condition.status == "True"]) > 0
+            foundation_ready = retirement_stage == "Active" and remote_auth_ready and karpenter_ready and cilium_ready and network_approval_valid and argocd_prerequisites_ready and argocd_project_ready and (not gitops_configured or gitops_bootstrap_ready)
+
+            _dxr.status = _dxr.status or {}
+            _dxr.status.references = {
+                clusterRef = params.clusterRef
+                remoteKubeconfigSecretRef = {
+                    namespace = namespace
+                    name = remote_kubeconfig_secret_name
+                    key = "kubeconfig"
+                }
+                ec2NodeClassName = karpenter_node_class_name
+                helmProviderConfigName = helm_provider_config_name
+                kubernetesProviderConfigName = kubernetes_provider_config_name
+                nodePoolName = karpenter_node_pool_name
+                argoCDReleaseName = "argocd"
+                appProjectName = argocd_project_name
+                bootstrapApplicationName = gitops_bootstrap_name if gitops_configured else ""
+            }
+            _dxr.status.actualVersions = _dxr.status?.actualVersions or {}
+            _dxr.status.retirement = {
+                requestedStage = requested_stage
+                approvedStage = retirement_stage
+                evidenceAccepted = retirement_evidence_valid
+                cleanupComplete = retirement_cleanup_complete
+                inventorySha256 = expected_inventory_sha[retirement_stage]
+            }
+            if karpenter_controller_ready:
+                _dxr.status.actualVersions.karpenter = karpenter_chart_version
+            if ec2_node_class_ready:
+                _dxr.status.actualVersions.nodeImage = karpenter_node_image_alias
+            if cilium_ready:
+                _dxr.status.actualVersions.cilium = cilium_chart_version
+            if argocd_release_ready:
+                _dxr.status.actualVersions.argoCD = argocd_app_version
+
+            conditions = {
+                apiVersion = "meta.krm.kcl.dev/v1alpha1"
+                kind = "Conditions"
+                conditions = [
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "RemoteAuthenticationReady"
+                            status = "True" if remote_auth_ready else "False"
+                            reason = "Available" if remote_auth_ready else ("ProbeFailed" if remote_auth_failed else "WaitingForProbe")
+                            message = "The observe-only kube-system probe reached the target EKS API using a freshly signed AWS identity token." if remote_auth_ready else ("The observe-only target API probe failed; desired ProviderConfigs and references are retained for recovery." if remote_auth_failed else "Waiting for the cluster-owned endpoint/CA Secret, injected AWS identity, and observe-only target API probe.")
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "KarpenterCRDsReady"
+                            status = "True" if karpenter_crds_ready else "False"
+                            reason = "Available" if karpenter_crds_ready else "WaitingForCRDRelease"
+                            message = "The separately owned Karpenter CRD release is ready; controller and v1 custom resources may be declared." if karpenter_crds_ready else "Waiting for the unique Karpenter CRD release owner before declaring the controller, EC2NodeClass, or NodePool."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "KarpenterReady"
+                            status = "True" if karpenter_ready else "False"
+                            reason = "Available" if karpenter_ready else ("SpotCapacityUnavailable" if spot_capacity_unavailable else ("WaitingForRemoteResources" if karpenter_stage_open else "WaitingForCRDRelease"))
+                            message = "The Fargate-hosted controller release, EC2NodeClass, and Spot-only NodePool report Ready." if karpenter_ready else ("The Spot-only capacity declaration remains in place, but AWS has not supplied eligible Spot capacity; no On-Demand or reserved fallback is permitted." if spot_capacity_unavailable else ("Karpenter resources are declared without waiting for CoreDNS, Cilium, or EC2 capacity; waiting for their remote readiness." if karpenter_stage_open else "Karpenter controller and custom resources remain gated only on the CRD release."))
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "CiliumDeclared"
+                            status = "True" if karpenter_stage_open else "False"
+                            reason = "Available" if karpenter_stage_open else "WaitingForKarpenterCRDRelease"
+                            message = "The Cilium Release is declared in the same stage as the Spot-only NodePool, so Cilium readiness cannot block capacity declaration." if karpenter_stage_open else "Waiting for the Karpenter CRD release before opening the shared zero-node bootstrap stage."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "CiliumReady"
+                            status = "True" if cilium_ready else "False"
+                            reason = "Available" if cilium_ready else ("ReleaseFailed" if cilium_failed else ("WaitingForRelease" if karpenter_stage_open else "NotDeclared"))
+                            message = "The Cilium ENI/IPAM and kube-proxy-replacement Release reports Ready; runtime network probes remain mandatory." if cilium_ready else ("The Cilium Release reports failure, but the Spot-only NodePool remains declared for recovery." if cilium_failed else ("Cilium is declared and may remain Pending until Spot EC2 capacity exists; this does not retract the NodePool." if karpenter_stage_open else "Cilium has not yet entered the zero-node bootstrap stage."))
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "NetworkUATApproved"
+                            status = "True" if network_approval_valid else "False"
+                            reason = "Approved" if network_approval_valid else ("EvidenceRejected" if network_approval_wrapper_ready else "WaitingForExternalEvidence")
+                            message = "An externally produced network UAT record is bound to this environment, cluster, foundation UID/generation, and observed kube-system UID." if network_approval_valid else ("The observed approval record failed its identity, generation, or evidence binding checks." if network_approval_wrapper_ready else "Waiting for the deployment or administrator principal to run U1/U3 probes and create the bound kube-system approval ConfigMap.")
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "ArgoCDDeclared"
+                            status = "True" if argocd_stage_open else "False"
+                            reason = "Available" if argocd_stage_open else ("RetirementInProgress" if not argocd_lifecycle_open else "WaitingForNetworkApproval")
+                            message = "The isolated remote Argo CD Release and namespaced business RBAC are declared on Spot capacity." if argocd_stage_open else ("Argo CD is outside the desired retirement stage." if not argocd_lifecycle_open else "Argo CD remains gated until externally approved runtime networking is bound to this foundation generation.")
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "ArgoCDReady"
+                            status = "True" if argocd_prerequisites_ready and argocd_project_ready else "False"
+                            reason = "Available" if argocd_prerequisites_ready and argocd_project_ready else ("WaitingForProject" if argocd_prerequisites_ready else ("WaitingForReleaseAndRBAC" if argocd_stage_open else "NotDeclared"))
+                            message = "Argo CD, its apps namespace RoleBinding, and the deny-by-default business AppProject report Ready." if argocd_prerequisites_ready and argocd_project_ready else ("Argo CD is ready but the business AppProject is not yet observed Ready." if argocd_prerequisites_ready else ("Waiting for the Argo CD Release, apps namespace, and namespaced Role/RoleBinding." if argocd_stage_open else "Argo CD has not passed its network gate."))
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "GitOpsBootstrapReady"
+                            status = "True" if gitops_configured and gitops_bootstrap_ready else ("False" if gitops_configured else "Unknown")
+                            reason = "Available" if gitops_configured and gitops_bootstrap_ready else ("WaitingForApplication" if gitops_configured else "NotConfigured")
+                            message = "The Crossplane-owned bootstrap Application is Synced and Healthy; Argo CD owns only its authorized business children." if gitops_configured and gitops_bootstrap_ready else ("A controlled Git source is configured; waiting for the bootstrap Application after Argo CD and AppProject readiness." if gitops_configured else "No Git source is configured, so no syncable bootstrap Application exists.")
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "FoundationReady"
+                            status = "True" if foundation_ready else "False"
+                            reason = "Available" if foundation_ready else "WaitingForFoundationComponents"
+                            message = "Remote authentication, Spot capacity, Cilium, externally approved network UAT, Argo CD, namespaced RBAC, and the configured GitOps bootstrap are ready." if foundation_ready else "Waiting for one or more foundation components or external runtime evidence; no static condition substitutes for AWS UAT."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "RuntimeNetworkUAT"
+                            status = "Unknown"
+                            reason = "RequiresAWSUAT"
+                            message = "Foundation status cannot prove real token refresh, Fargate-to-EC2, DNS, Service, or policy connectivity."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "RetirementEvidenceAccepted"
+                            status = "True" if retirement_evidence_valid else "False"
+                            reason = "Accepted" if retirement_evidence_valid else ("EvidenceRejected" if retirement_evidence_wrapper_ready else "WaitingForExternalEvidence")
+                            message = "The requested retirement stage is approved by evidence bound to both XR identities, generations, transition, inventory hash, and zero-residual checks." if retirement_evidence_valid else "The requested stage is held at the last approved stage; all resources in that retained inventory remain desired."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "RetirementCleanupComplete"
+                            status = "True" if retirement_cleanup_complete else "False"
+                            reason = "DeleteReady" if retirement_cleanup_complete else "Protected"
+                            message = "Remote foundation and dynamic-capacity inventory is zero and native protection release was explicitly approved." if retirement_cleanup_complete else "Remote authentication, cleanup controllers, native EKS deletion protection, and root protection remain retained."
+                        }
+                    }
+                ]
+            }
+
+            remote_connection_owner_resources = [kubernetes_provider_config, helm_provider_config, remote_auth_probe] if remote_connection_stage_open else []
+            karpenter_crd_resources = [karpenter_crds_release] if foundation_runtime_stage_open else []
+            network_approval_resources = [network_uat_approval] if network_approval_stage_open else []
+            foundation_usage_resources = [foundation_uses_cluster] if foundation_usage_stage_open else []
+
+            items = [
+                *remote_connection_owner_resources,
+                *karpenter_crd_resources,
+                *karpenter_post_crd_resources,
+                *network_approval_resources,
+                *argocd_base_resources,
+                *argocd_project_resources,
+                *gitops_bootstrap_resources,
+                *foundation_usage_resources,
+                *retirement_evidence_resources,
+                conditions,
+                _dxr,
+            ]

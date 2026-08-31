@@ -1,0 +1,75 @@
+remote-auth-probe:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+      atProvider:
+        manifest:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: kube-system
+            uid: 00000000-0000-4000-8000-000000000101
+karpenter-crds-release:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+karpenter-controller-release:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+ec2-node-class:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+spot-general-node-pool:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+cilium-release:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+network-uat-approval:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+      atProvider:
+        manifest:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: eks-dev-spot-network-uat-approval
+            namespace: kube-system
+            labels:
+              platform.aws.goodnotes.io/environment: eks-dev-spot
+              platform.aws.goodnotes.io/cluster: eks-dev-spot-cluster
+          data:
+            approved: "true"
+            foundation-uid: 00000000-0000-4000-8000-000000000008
+            foundation-generation: "8"
+            kube-system-uid: 00000000-0000-4000-8000-000000000101
+            run-id: test-only-u1-u3
+            approved-by: arn:aws:iam::000000000000:role/TEST-ONLY-EksAdmin
+            observed-at: "2026-08-27T12:00:00Z"
+            evidence-sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

@@ -1,0 +1,62 @@
+# Review template mirrored by XClusterFoundation; do not install it directly.
+# clusterName, clusterEndpoint, clusterCABundle, interruptionQueue, and the
+# service-account role annotation are merged from the cluster-owned
+# crossplane-system/<environment>-eks-access Secret at reconciliation time.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: karpenter.sh/nodepool
+              operator: DoesNotExist
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution: []
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          topologyKey: kubernetes.io/hostname
+controller:
+  image:
+    repository: public.ecr.aws/karpenter/controller
+    tag: 1.14.1
+    digest: sha256:445baefaaa689029cc12ac1f659b916b0b82fb14308ce536f8521fcf079116fa
+  env:
+    - name: AWS_REGION
+      value: __INJECTED_AWS_REGION__
+    - name: AWS_DEFAULT_REGION
+      value: __INJECTED_AWS_REGION__
+    - name: AWS_EC2_METADATA_DISABLED
+      value: "true"
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+dnsPolicy: Default
+fullnameOverride: karpenter
+hostNetwork: false
+podDisruptionBudget:
+  name: karpenter
+  maxUnavailable: 1
+podLabels:
+  app.kubernetes.io/instance: karpenter
+  app.kubernetes.io/name: karpenter
+priorityClassName: system-cluster-critical
+replicas: 2
+serviceAccount:
+  create: true
+  name: karpenter
+settings:
+  featureGates:
+    capacityBuffer: false
+    nodeOverlay: false
+    nodeRepair: false
+    reservedCapacity: false
+    spotToSpotConsolidation: false
+    staticCapacity: false
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway

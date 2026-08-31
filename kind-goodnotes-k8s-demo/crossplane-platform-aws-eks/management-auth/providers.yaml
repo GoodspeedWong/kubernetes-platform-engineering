@@ -1,0 +1,29 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-kubernetes
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-bootstrap
+    platform.aws.goodnotes.io/resource-role: remote-auth-provider
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-kubernetes@sha256:f6665ef36536d3c54343ac9142376c402fdac8d39591c9720ead104f8d9bf612
+  packagePullPolicy: IfNotPresent
+  runtimeConfigRef:
+    apiVersion: pkg.crossplane.io/v1beta1
+    kind: DeploymentRuntimeConfig
+    name: eks-remote-auth
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-helm
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-bootstrap
+    platform.aws.goodnotes.io/resource-role: remote-auth-provider
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-helm@sha256:2280e32fd4e42f0bbe66d1dcd8ddd9cc3a4d46eaba9f4bccddfaec2302664926
+  packagePullPolicy: IfNotPresent
+  runtimeConfigRef:
+    apiVersion: pkg.crossplane.io/v1beta1
+    kind: DeploymentRuntimeConfig
+    name: eks-remote-auth

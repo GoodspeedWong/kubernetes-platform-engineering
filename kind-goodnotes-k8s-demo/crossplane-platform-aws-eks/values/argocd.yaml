@@ -1,0 +1,149 @@
+# Review copy of the XClusterFoundation Argo CD values. The Composition is the
+# executable source; this file is compared byte-for-structure by P8 tests.
+createAggregateRoles: false
+createClusterRoles: false
+crds:
+  annotations:
+    argocd.argoproj.io/sync-options: ServerSideApply=true
+  install: true
+  keep: false
+global:
+  affinity:
+    nodeAffinity:
+      matchExpressions: []
+      type: hard
+    podAntiAffinity: soft
+  image:
+    imagePullPolicy: IfNotPresent
+    repository: quay.io/argoproj/argocd
+    tag: v3.5.1@sha256:0deb1a1c917629b960ead995ae3b6069450a866992676599658687ef9a641ee8
+  networkPolicy:
+    create: true
+    defaultDenyIngress: false
+  nodeSelector:
+    karpenter.sh/nodepool: spot-general
+    kubernetes.io/os: linux
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+  tolerations: []
+configs:
+  cm:
+    admin.enabled: false
+    application.instanceLabelKey: argocd.argoproj.io/instance
+    application.sync.impersonation.enabled: false
+    exec.enabled: false
+    resource.exclusions: |
+      - apiGroups:
+        - apiextensions.crossplane.io
+        - platform.aws.goodnotes.io
+        - helm.crossplane.io
+        - kubernetes.crossplane.io
+        kinds:
+        - '*'
+      - apiGroups:
+        - karpenter.sh
+        kinds:
+        - NodeClaim
+        - NodePool
+      - apiGroups:
+        - karpenter.k8s.aws
+        kinds:
+        - EC2NodeClass
+      - apiGroups:
+        - cilium.io
+        kinds:
+        - '*'
+      - apiGroups:
+        - argoproj.io
+        kinds:
+        - ApplicationSet
+  rbac:
+    policy.csv: |
+      p, role:business, applications, get, business/*, allow
+      p, role:business, applications, sync, business/*, allow
+      p, role:business, projects, get, business, allow
+      p, role:business, logs, get, business/*, allow
+    policy.default: ""
+    policy.matchMode: glob
+    scopes: '[groups]'
+controller:
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+dex:
+  enabled: false
+applicationSet:
+  replicas: 0
+notifications:
+  enabled: false
+commitServer:
+  enabled: false
+redis-ha:
+  enabled: false
+redis:
+  enabled: true
+  image:
+    imagePullPolicy: IfNotPresent
+    repository: ecr-public.aws.com/docker/library/redis
+    tag: 8.6.4-alpine@sha256:2cc044fc5a07c9b701f8f1255a309ae9ad7856e694ac03513bf3648c01e40763
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+redisSecretInit:
+  enabled: true
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 10m
+      memory: 64Mi
+repoServer:
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+server:
+  autoscaling:
+    enabled: false
+  extensions:
+    enabled: false
+  ingress:
+    enabled: false
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  replicas: 1
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  service:
+    type: ClusterIP

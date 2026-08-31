@@ -1,0 +1,54 @@
+schemaVersion: 1
+scope: static-zero-node-bootstrap-model-not-runtime-evidence
+nodes:
+  - id: eks-api-and-identity
+    plane: aws
+    requires: []
+  - id: token-free-remote-auth
+    plane: management
+    requires:
+      - eks-api-and-identity
+  - id: karpenter-crds
+    plane: workload-api
+    requires:
+      - token-free-remote-auth
+  - id: karpenter-controller-on-fargate
+    plane: workload-fargate
+    requires:
+      - karpenter-crds
+  - id: capacity-and-cilium-declarations
+    plane: workload-api
+    requires:
+      - karpenter-crds
+  - id: pending-bootstrap-workloads
+    plane: workload-scheduler
+    requires:
+      - karpenter-controller-on-fargate
+      - capacity-and-cilium-declarations
+  - id: spot-ec2-node
+    plane: aws
+    requires:
+      - pending-bootstrap-workloads
+  - id: host-network-cilium-agent-and-operator
+    plane: workload-ec2
+    requires:
+      - spot-ec2-node
+  - id: eni-ipam-and-taint-removal
+    plane: aws-and-workload-ec2
+    requires:
+      - host-network-cilium-agent-and-operator
+  - id: coredns-and-normal-pods
+    plane: workload-ec2
+    requires:
+      - eni-ipam-and-taint-removal
+  - id: runtime-network-uat
+    plane: evidence
+    requires:
+      - coredns-and-normal-pods
+invariants:
+  ciliumAndNodePoolDeclaredTogether: true
+  controllerNeedsCoreDNS: false
+  controllerNeedsEC2: false
+  nodePoolNeedsCiliumReady: false
+  onDemandFallbackAllowed: false
+  staticModelProvesRuntimeConnectivity: false

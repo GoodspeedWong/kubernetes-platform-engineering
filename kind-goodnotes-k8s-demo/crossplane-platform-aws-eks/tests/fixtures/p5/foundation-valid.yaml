@@ -1,0 +1,43 @@
+apiVersion: platform.aws.goodnotes.io/v1alpha1
+kind: XClusterFoundation
+metadata:
+  name: eks-dev-spot-foundation
+  uid: 00000000-0000-4000-8000-000000000008
+  generation: 8
+spec:
+  crossplane:
+    compositionUpdatePolicy: Manual
+  parameters:
+    availabilityZones:
+      - us-east-1a
+      - us-east-1b
+    clusterRef:
+      kind: XEKSCluster
+      name: eks-dev-spot-cluster
+    compute:
+      class: spot-general
+      limits:
+        cpu: "16"
+        memory: 64Gi
+    environmentRef:
+      kind: XEKSEnvironment
+      name: eks-dev-spot
+    environmentIdentity:
+      uid: 00000000-0000-4000-8000-000000000002
+      generation: 2
+    kubernetesVersion: "1.35"
+    lifecycle:
+      retirementStage: Active
+      deletionProtection: true
+    managementNamespace: crossplane-system
+    nativeRoutingCIDR: 10.40.0.0/16
+    nodeImageRef:
+      kind: EnvironmentConfig
+      name: test-only-node-image
+    platformReleaseRef:
+      kind: EnvironmentConfig
+      name: test-only-platform-release
+    providerConfigRef:
+      kind: ClusterProviderConfig
+      name: test-only-aws
+    region: us-east-1

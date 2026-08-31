@@ -1,0 +1,14 @@
+remote-auth-probe:
+  Resource:
+    apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      namespace: crossplane-system
+      annotations:
+        krm.kcl.dev/composition-resource-name: remote-auth-probe
+    status:
+      conditions:
+        - type: Ready
+          status: "False"
+          reason: ReconcileError
+          message: "Unauthorized: test fixture represents an expired EKS token"

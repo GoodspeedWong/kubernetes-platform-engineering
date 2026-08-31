@@ -1,0 +1,28 @@
+karpenter-crds-release:
+  Resource:
+    apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      namespace: crossplane-system
+      annotations:
+        crossplane.io/external-name: karpenter-crd
+        krm.kcl.dev/composition-resource-name: karpenter-crds-release
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+cilium-release:
+  Resource:
+    apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      namespace: crossplane-system
+      annotations:
+        crossplane.io/external-name: cilium
+        krm.kcl.dev/composition-resource-name: cilium-release
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available

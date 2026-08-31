@@ -1,0 +1,20 @@
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: eks-aws-session
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-bootstrap
+spec:
+  deploymentTemplate:
+    metadata:
+      labels:
+        platform.aws.goodnotes.io/session-renewal: enabled
+    spec:
+      selector: {}
+      template:
+        spec:
+          containers:
+            - name: package-runtime
+              env:
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: "true"

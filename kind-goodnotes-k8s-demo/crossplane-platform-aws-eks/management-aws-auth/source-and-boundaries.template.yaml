@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: 'PENDING REVIEW: external renewable source role and seven immutable-to-provider permission ceilings. No users, keys or EKS resources.'
+Metadata:
+  ReviewStatus: PENDING_SECURITY_APPROVAL
+  Owner: ManagementPlaneOperator
+  NoAutomaticDeployment: true
+  Compiler: scripts/eks_lifecycle/prepare_identity_boundaries.py
+Parameters:
+  EnvironmentName:
+    Type: String
+    MinLength: 3
+    MaxLength: 52
+    AllowedPattern: ^[a-z][a-z0-9-]*[a-z0-9]$
+  TargetRegion:
+    Type: String
+    Default: us-east-1
+    AllowedValues:
+      - us-east-1
+  TrustedOperatorRoleArn:
+    Type: String
+    Description: Explicitly approved stable upstream role; no IAM user or STS session ARN.
+    AllowedPattern: ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$
+Resources:
+  BoundaryXpSource:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-xp-source-boundary
+      PolicyDocument:
+        Fn::Sub: '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"sts:AssumeRole","Resource":["arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-xp-aws","arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-eks-deploy"]}]}'
+  BoundaryXpBootstrap:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-xp-bootstrap-boundary
+      PolicyDocument:
+        Fn::Sub: '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ec2:AllocateAddress","ec2:AssociateRouteTable","ec2:AttachInternetGateway","ec2:AuthorizeSecurityGroupEgress","ec2:AuthorizeSecurityGroupIngress","ec2:CreateInternetGateway","ec2:CreateNatGateway","ec2:CreateRoute","ec2:CreateRouteTable","ec2:CreateSecurityGroup","ec2:CreateSubnet","ec2:CreateTags","ec2:CreateVpc","ec2:DeleteInternetGateway","ec2:DeleteNatGateway","ec2:DeleteRoute","ec2:DeleteRouteTable","ec2:DeleteSecurityGroup","ec2:DeleteSubnet","ec2:DeleteTags","ec2:DeleteVpc","ec2:DescribeAccountAttributes","ec2:DescribeAddresses","ec2:DescribeAvailabilityZones","ec2:DescribeInstances","ec2:DescribeInternetGateways","ec2:DescribeNatGateways","ec2:DescribeNetworkAcls","ec2:DescribeNetworkInterfaces","ec2:DescribeRouteTables","ec2:DescribeSecurityGroupReferences","ec2:DescribeSecurityGroupRules","ec2:DescribeSecurityGroups","ec2:DescribeStaleSecurityGroups","ec2:DescribeSubnets","ec2:DescribeTags","ec2:DescribeVpcAttribute","ec2:DescribeVpcs","ec2:DetachInternetGateway","ec2:DisassociateRouteTable","ec2:ModifySubnetAttribute","ec2:ModifyVpcAttribute","ec2:ReleaseAddress","ec2:ReplaceRoute","ec2:RevokeSecurityGroupEgress","ec2:RevokeSecurityGroupIngress","ec2:UpdateSecurityGroupRuleDescriptionsEgress","ec2:UpdateSecurityGroupRuleDescriptionsIngress","eks:AssociateAccessPolicy","eks:CreateAccessEntry","eks:CreateAddon","eks:CreateCluster","eks:CreateFargateProfile","eks:DeleteAccessEntry","eks:DeleteAddon","eks:DeleteCluster","eks:DeleteFargateProfile","eks:DescribeAccessEntry","eks:DescribeAddon","eks:DescribeAddonConfiguration","eks:DescribeAddonVersions","eks:DescribeCluster","eks:DescribeClusterVersions","eks:DescribeFargateProfile","eks:DescribeUpdate","eks:DisassociateAccessPolicy","eks:ListAccessEntries","eks:ListAddons","eks:ListAssociatedAccessPolicies","eks:ListClusters","eks:ListFargateProfiles","eks:ListTagsForResource","eks:ListUpdates","eks:TagResource","eks:UntagResource","eks:UpdateAccessEntry","eks:UpdateAddon","eks:UpdateClusterConfig","eks:UpdateClusterVersion","events:DeleteRule","events:DescribeRule","events:DisableRule","events:EnableRule","events:ListRules","events:ListTagsForResource","events:ListTargetsByRule","events:PutRule","events:PutTargets","events:RemoveTargets","events:TagResource","events:UntagResource","iam:AddClientIDToOpenIDConnectProvider","iam:AddRoleToInstanceProfile","iam:AttachRolePolicy","iam:CreateInstanceProfile","iam:CreateOpenIDConnectProvider","iam:CreateRole","iam:DeleteInstanceProfile","iam:DeleteOpenIDConnectProvider","iam:DeleteRole","iam:DeleteRolePolicy","iam:DetachRolePolicy","iam:GetInstanceProfile","iam:GetOpenIDConnectProvider","iam:GetRole","iam:GetRolePolicy","iam:ListAttachedRolePolicies","iam:ListInstanceProfilesForRole","iam:ListOpenIDConnectProviders","iam:ListRolePolicies","iam:ListRoleTags","iam:PutRolePolicy","iam:RemoveClientIDFromOpenIDConnectProvider","iam:RemoveRoleFromInstanceProfile","iam:TagInstanceProfile","iam:TagOpenIDConnectProvider","iam:TagRole","iam:UntagInstanceProfile","iam:UntagOpenIDConnectProvider","iam:UntagRole","iam:UpdateOpenIDConnectProviderThumbprint","iam:UpdateRole","iam:UpdateRoleDescription","sqs:CreateQueue","sqs:DeleteQueue","sqs:GetQueueAttributes","sqs:GetQueueUrl","sqs:ListQueueTags","sqs:ListQueues","sqs:SetQueueAttributes","sqs:TagQueue","sqs:UntagQueue"],"Resource":"*"},{"Effect":"Allow","Action":"iam:PassRole","Resource":["arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-eks-control","arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-fargate-pod","arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-ec2-node"],"Condition":{"StringEquals":{"iam:PassedToService":["ec2.amazonaws.com","eks.amazonaws.com","eks-fargate-pods.amazonaws.com"]}}},{"Effect":"Deny","Action":["ec2:*","eks:*","events:*","sqs:*"],"Resource":"*","Condition":{"StringNotEquals":{"aws:RequestedRegion":"${TargetRegion}"}}},{"Effect":"Deny","Action":"iam:*","Resource":["arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-xp-aws","arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-eks-deploy","arn:${AWS::Partition}:iam::${AWS::AccountId}:user/platform-bootstrap/${EnvironmentName}-xp-source","arn:${AWS::Partition}:iam::${AWS::AccountId}:role/platform-bootstrap/${EnvironmentName}-xp-source","arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-xp-bootstrap-boundary","arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-*-boundary","arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-xp-network-policy","arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-xp-service-policy","arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-xp-discovery-policy","arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-xp-network-create-policy"]},{"Effect":"Deny","Action":["iam:UpdateAssumeRolePolicy","iam:PutRolePermissionsBoundary","iam:DeleteRolePermissionsBoundary"],"Resource":"*"},{"Effect":"Deny","Action":"sts:AssumeRole","Resource":"*"}]}'
+  BoundaryEksControl:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-eks-control-boundary
+      PolicyDocument:
+        Fn::Sub: '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ec2:CreateTags"],"Resource":"arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:instance/*","Condition":{"StringEquals":{"aws:RequestedRegion":"${TargetRegion}","ec2:ResourceTag/kubernetes.io/cluster/${EnvironmentName}":"owned","aws:RequestTag/kubernetes.io/cluster/${EnvironmentName}":"owned"},"ForAllValues:StringEquals":{"aws:TagKeys":["kubernetes.io/cluster/${EnvironmentName}"]},"Null":{"aws:TagKeys":"false"}}},{"Effect":"Allow","Action":["ec2:DescribeInstances","ec2:DescribeNetworkInterfaces","ec2:DescribeVpcs","ec2:DescribeDhcpOptions","ec2:DescribeAvailabilityZones","ec2:DescribeInstanceTopology","kms:DescribeKey"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":"${TargetRegion}"}}}]}'
+  BoundaryFargatePod:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-fargate-pod-boundary
+      PolicyDocument: '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ecr:GetAuthorizationToken","ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage"],"Resource":"*"}]}'
+  BoundaryEc2Node:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-ec2-node-boundary
+      PolicyDocument: '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ec2:DescribeInstances","ec2:DescribeInstanceTypes","ec2:DescribeRouteTables","ec2:DescribeSecurityGroups","ec2:DescribeSubnets","ec2:DescribeVolumes","ec2:DescribeVolumesModifications","ec2:DescribeVpcs","eks:DescribeCluster","eks-auth:AssumeRoleForPodIdentity"],"Resource":"*"},{"Effect":"Allow","Action":["ecr:GetAuthorizationToken","ecr:BatchGetImage","ecr:GetDownloadUrlForLayer","ecr:BatchImportUpstreamImage"],"Resource":"*"}]}'
+  BoundaryKarpenter:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-karpenter-boundary
+      PolicyDocument:
+        Fn::Sub: '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ec2:CreateFleet","ec2:RunInstances"],"Resource":["arn:${AWS::Partition}:ec2:${TargetRegion}::image/*","arn:${AWS::Partition}:ec2:${TargetRegion}::snapshot/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:security-group/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:subnet/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:capacity-reservation/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:placement-group/*"]},{"Effect":"Allow","Action":["ec2:CreateFleet","ec2:RunInstances"],"Resource":"arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:launch-template/*","Condition":{"StringEquals":{"aws:ResourceTag/kubernetes.io/cluster/${EnvironmentName}-cluster":"owned"},"StringLike":{"aws:ResourceTag/karpenter.sh/nodepool":"*"}}},{"Effect":"Allow","Action":["ec2:CreateFleet","ec2:CreateLaunchTemplate","ec2:RunInstances"],"Resource":["arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:fleet/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:instance/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:volume/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:network-interface/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:launch-template/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:spot-instances-request/*"],"Condition":{"StringEquals":{"aws:RequestTag/kubernetes.io/cluster/${EnvironmentName}-cluster":"owned","aws:RequestTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}","aws:RequestTag/eks:eks-cluster-name":"${EnvironmentName}-cluster"},"StringLike":{"aws:RequestTag/karpenter.sh/nodepool":"*"}}},{"Effect":"Allow","Action":"ec2:CreateTags","Resource":["arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:fleet/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:instance/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:volume/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:network-interface/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:launch-template/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:spot-instances-request/*"],"Condition":{"StringEquals":{"aws:RequestTag/kubernetes.io/cluster/${EnvironmentName}-cluster":"owned","aws:RequestTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}","aws:RequestTag/eks:eks-cluster-name":"${EnvironmentName}-cluster","ec2:CreateAction":["CreateFleet","CreateLaunchTemplate","RunInstances"]},"StringLike":{"aws:RequestTag/karpenter.sh/nodepool":"*"}}},{"Effect":"Allow","Action":"ec2:CreateTags","Resource":"arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:instance/*","Condition":{"StringEquals":{"aws:ResourceTag/kubernetes.io/cluster/${EnvironmentName}-cluster":"owned","aws:ResourceTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}"},"StringLike":{"aws:ResourceTag/karpenter.sh/nodepool":"*"},"StringEqualsIfExists":{"aws:RequestTag/eks:eks-cluster-name":"${EnvironmentName}-cluster"},"ForAllValues:StringEquals":{"aws:TagKeys":["eks:eks-cluster-name","karpenter.sh/nodeclaim","Name"]}}},{"Effect":"Allow","Action":["ec2:DeleteLaunchTemplate","ec2:TerminateInstances"],"Resource":["arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:instance/*","arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:launch-template/*"],"Condition":{"StringEquals":{"aws:ResourceTag/kubernetes.io/cluster/${EnvironmentName}-cluster":"owned","aws:ResourceTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}"},"StringLike":{"aws:ResourceTag/karpenter.sh/nodepool":"*"}}},{"Effect":"Allow","Action":["ec2:DescribeCapacityReservations","ec2:DescribeImages","ec2:DescribeInstances","ec2:DescribeInstanceStatus","ec2:DescribeInstanceTypeOfferings","ec2:DescribeInstanceTypes","ec2:DescribeLaunchTemplates","ec2:DescribePlacementGroups","ec2:DescribeSecurityGroups","ec2:DescribeSpotPriceHistory","ec2:DescribeSubnets"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":"${TargetRegion}"}}},{"Effect":"Allow","Action":"pricing:GetProducts","Resource":"*"},{"Effect":"Allow","Action":"arc-zonal-shift:GetManagedResource","Resource":"*","Condition":{"StringEquals":{"arc-zonal-shift:ResourceIdentifier":"arn:${AWS::Partition}:eks:${TargetRegion}:${AWS::AccountId}:cluster/${EnvironmentName}-cluster"}}},{"Effect":"Allow","Action":"iam:ListInstanceProfiles","Resource":"*"},{"Effect":"Allow","Action":"ssm:GetParameter","Resource":"arn:${AWS::Partition}:ssm:${TargetRegion}::parameter/aws/service/eks/optimized-ami/*"},{"Effect":"Allow","Action":"iam:PassRole","Resource":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-ec2-node","Condition":{"StringEquals":{"iam:PassedToService":["ec2.amazonaws.com","ec2.amazonaws.com.cn"]}}},{"Effect":"Allow","Action":"eks:DescribeCluster","Resource":"arn:${AWS::Partition}:eks:${TargetRegion}:${AWS::AccountId}:cluster/${EnvironmentName}-cluster"},{"Effect":"Allow","Action":["sqs:DeleteMessage","sqs:GetQueueUrl","sqs:ReceiveMessage"],"Resource":"arn:${AWS::Partition}:sqs:${TargetRegion}:${AWS::AccountId}:${EnvironmentName}-karpenter-events"},{"Effect":"Allow","Action":"iam:GetInstanceProfile","Resource":"arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/${EnvironmentName}-ec2-node"}]}'
+  BoundaryCilium:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-cilium-boundary
+      PolicyDocument:
+        Fn::Sub: '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ec2:DescribeInstances","ec2:DescribeInstanceTypes","ec2:DescribeNetworkInterfaces","ec2:DescribeRouteTables","ec2:DescribeSecurityGroups","ec2:DescribeSubnets","ec2:DescribeTags","ec2:DescribeVpcs"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":"${TargetRegion}"}}},{"Effect":"Allow","Action":"ec2:CreateNetworkInterface","Resource":"arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:network-interface/*","Condition":{"StringEquals":{"aws:RequestTag/io.cilium/cluster-name":"${EnvironmentName}-cluster","aws:RequestTag/io.cilium/cilium-managed":"true","aws:RequestTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}","aws:RequestedRegion":"${TargetRegion}"}}},{"Effect":"Allow","Action":"ec2:CreateNetworkInterface","Resource":"arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:subnet/*","Condition":{"StringEquals":{"aws:ResourceTag/kubernetes.io/cluster/${EnvironmentName}-cluster":"shared","aws:ResourceTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}","aws:ResourceTag/platform.aws.goodnotes.io/subnet-visibility":"private","aws:RequestedRegion":"${TargetRegion}"}}},{"Effect":"Allow","Action":"ec2:CreateNetworkInterface","Resource":"arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:security-group/*","Condition":{"StringEquals":{"aws:ResourceTag/kubernetes.io/cluster/${EnvironmentName}-cluster":"owned","aws:ResourceTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}","aws:RequestedRegion":"${TargetRegion}"}}},{"Effect":"Allow","Action":"ec2:CreateTags","Resource":"arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:network-interface/*","Condition":{"StringEquals":{"aws:RequestTag/io.cilium/cluster-name":"${EnvironmentName}-cluster","aws:RequestTag/io.cilium/cilium-managed":"true","aws:RequestTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}","ec2:CreateAction":"CreateNetworkInterface"}}},{"Effect":"Allow","Action":"ec2:AttachNetworkInterface","Resource":"arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:network-interface/*","Condition":{"StringEquals":{"aws:ResourceTag/io.cilium/cluster-name":"${EnvironmentName}-cluster","aws:ResourceTag/io.cilium/cilium-managed":"true","aws:ResourceTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}","aws:RequestedRegion":"${TargetRegion}"}}},{"Effect":"Allow","Action":"ec2:AttachNetworkInterface","Resource":"arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:instance/*","Condition":{"StringEquals":{"aws:ResourceTag/kubernetes.io/cluster/${EnvironmentName}-cluster":"owned","aws:ResourceTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}","aws:RequestedRegion":"${TargetRegion}"}}},{"Effect":"Allow","Action":["ec2:AssignPrivateIpAddresses","ec2:DeleteNetworkInterface","ec2:ModifyNetworkInterfaceAttribute","ec2:UnassignPrivateIpAddresses"],"Resource":"arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:network-interface/*","Condition":{"StringEquals":{"aws:ResourceTag/io.cilium/cluster-name":"${EnvironmentName}-cluster","aws:ResourceTag/io.cilium/cilium-managed":"true","aws:ResourceTag/platform.aws.goodnotes.io/environment":"${EnvironmentName}","aws:RequestedRegion":"${TargetRegion}"}}}]}'
+  RenewableSourceRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RoleName:
+        Fn::Sub: ${EnvironmentName}-xp-source
+      Path: /platform-bootstrap/
+      MaxSessionDuration: 3600
+      PermissionsBoundary:
+        Ref: BoundaryXpSource
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              AWS:
+                Ref: TrustedOperatorRoleArn
+      Policies:
+        - PolicyName: assume-platform-roles
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource:
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-xp-aws
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-eks-deploy
+      Tags:
+        - Key: managed-by
+          Value: cloudformation
+        - Key: platform.aws.goodnotes.io/environment
+          Value:
+            Ref: EnvironmentName
+Outputs:
+  SourceRoleArn:
+    Value:
+      Fn::GetAtt:
+        - RenewableSourceRole
+        - Arn
+  BootstrapBoundaryArn:
+    Value:
+      Ref: BoundaryXpBootstrap

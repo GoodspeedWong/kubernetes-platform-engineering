@@ -1,0 +1,100 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Explicit account bootstrap for the EC2 Spot, EKS, and EKS Fargate
+  service-linked roles required by the EKS lifecycle platform. These roles are
+  account-level prerequisites and are never owned by an environment XR.
+
+Parameters:
+  CreateEC2SpotServiceLinkedRole:
+    Type: String
+    Description: Create AWSServiceRoleForEC2Spot when the role is absent.
+    Default: "false"
+    AllowedValues:
+      - "false"
+      - "true"
+
+  CreateEKSServiceLinkedRole:
+    Type: String
+    Description: Create AWSServiceRoleForAmazonEKS when the role is absent.
+    Default: "false"
+    AllowedValues:
+      - "false"
+      - "true"
+
+  CreateEKSFargateServiceLinkedRole:
+    Type: String
+    Description: >-
+      Create AWSServiceRoleForAmazonEKSForFargate when the role is absent.
+    Default: "false"
+    AllowedValues:
+      - "false"
+      - "true"
+
+Conditions:
+  CreatesEC2SpotServiceLinkedRole:
+    Fn::Equals:
+      - Ref: CreateEC2SpotServiceLinkedRole
+      - "true"
+  CreatesEKSServiceLinkedRole:
+    Fn::Equals:
+      - Ref: CreateEKSServiceLinkedRole
+      - "true"
+  CreatesEKSFargateServiceLinkedRole:
+    Fn::Equals:
+      - Ref: CreateEKSFargateServiceLinkedRole
+      - "true"
+
+Resources:
+  EC2SpotServiceLinkedRole:
+    Type: AWS::IAM::ServiceLinkedRole
+    Condition: CreatesEC2SpotServiceLinkedRole
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AWSServiceName: spot.amazonaws.com
+      Description: Account-level role used by EC2 to manage Spot Instances.
+
+  EKSServiceLinkedRole:
+    Type: AWS::IAM::ServiceLinkedRole
+    Condition: CreatesEKSServiceLinkedRole
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AWSServiceName: eks.amazonaws.com
+      Description: Account-level role used by Amazon EKS to manage clusters.
+
+  EKSFargateServiceLinkedRole:
+    Type: AWS::IAM::ServiceLinkedRole
+    Condition: CreatesEKSFargateServiceLinkedRole
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AWSServiceName: eks-fargate.amazonaws.com
+      Description: >-
+        Account-level role used by Amazon EKS to manage Fargate networking.
+
+Outputs:
+  EC2SpotServiceLinkedRoleState:
+    Description: Role name when created by this stack; otherwise external.
+    Value:
+      Fn::If:
+        - CreatesEC2SpotServiceLinkedRole
+        - Ref: EC2SpotServiceLinkedRole
+        - EXTERNAL_OR_NOT_REQUESTED
+
+  EKSServiceLinkedRoleState:
+    Description: Role name when created by this stack; otherwise external.
+    Value:
+      Fn::If:
+        - CreatesEKSServiceLinkedRole
+        - Ref: EKSServiceLinkedRole
+        - EXTERNAL_OR_NOT_REQUESTED
+
+  EKSFargateServiceLinkedRoleState:
+    Description: Role name when created by this stack; otherwise external.
+    Value:
+      Fn::If:
+        - CreatesEKSFargateServiceLinkedRole
+        - Ref: EKSFargateServiceLinkedRole
+        - EXTERNAL_OR_NOT_REQUESTED

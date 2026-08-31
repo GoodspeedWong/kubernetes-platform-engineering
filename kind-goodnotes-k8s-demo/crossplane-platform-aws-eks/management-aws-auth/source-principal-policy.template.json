@@ -1,0 +1,13 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": [
+        "__REPLACE_CROSSPLANE_PROVIDER_ROLE_ARN__",
+        "__REPLACE_EKS_DEPLOYMENT_ROLE_ARN__"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,826 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: External bootstrap IAM role used by the Crossplane AWS ClusterProviderConfig for one dedicated EKS lifecycle environment. This stack is intentionally not owned by the environment XR.
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Exact XEKSEnvironment metadata.name. The role and policy scope are bound to resources derived from this name.
+    MinLength: 3
+    MaxLength: 52
+    AllowedPattern: ^[a-z][a-z0-9-]*[a-z0-9]$
+  TargetRegion:
+    Type: String
+    Description: Approved AWS Region for this environment.
+    Default: us-east-1
+    AllowedValues:
+      - us-east-1
+  TrustedSourcePrincipalArn:
+    Type: String
+    Description: Required external renewable source role (SSO/OIDC/Roles Anywhere). IAM users and STS session ARNs are forbidden.
+    AllowedPattern: ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$
+  PermissionsBoundaryArn:
+    Type: String
+    Description: Required pre-created, reviewed boundary for both bootstrap roles. The provider cannot modify it.
+    AllowedPattern: ^arn:aws:iam::[0-9]{12}:policy/[A-Za-z0-9+=,.@_/-]+$
+  MaxSessionDurationSeconds:
+    Type: Number
+    Description: Maximum STS session duration for the provider execution role.
+    Default: 3600
+    MinValue: 3600
+    MaxValue: 3600
+Resources:
+  CrossplaneAWSProviderRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RoleName:
+        Fn::Sub: ${EnvironmentName}-xp-aws
+      Description:
+        Fn::Sub: Crossplane AWS Provider execution role for ${EnvironmentName}; retained independently from the environment lifecycle.
+      MaxSessionDuration:
+        Ref: MaxSessionDurationSeconds
+      PermissionsBoundary:
+        Ref: PermissionsBoundaryArn
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: TrustOnlyApprovedProviderSource
+            Effect: Allow
+            Principal:
+              AWS:
+                Ref: TrustedSourcePrincipalArn
+            Action: sts:AssumeRole
+      Tags:
+        - Key: managed-by
+          Value: cloudformation
+        - Key: platform.aws.goodnotes.io/component
+          Value: crossplane-provider-bootstrap
+        - Key: platform.aws.goodnotes.io/environment
+          Value:
+            Ref: EnvironmentName
+      Policies:
+        - PolicyName: deny-outside-approved-region
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: DenyRegionalServicesOutsideApprovedRegion
+                Effect: Deny
+                Action:
+                  - ec2:*
+                  - eks:*
+                  - events:*
+                  - sqs:*
+                Resource: '*'
+                Condition:
+                  StringNotEquals:
+                    aws:RequestedRegion:
+                      Ref: TargetRegion
+              - Sid: NeverMutateBootstrapIdentitiesOrBoundaries
+                Effect: Deny
+                Action: iam:*
+                Resource:
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-xp-aws
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-eks-deploy
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:user/platform-bootstrap/${EnvironmentName}-xp-source
+                  - Ref: TrustedSourcePrincipalArn
+                  - Ref: PermissionsBoundaryArn
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-*-boundary
+                  - Ref: CrossplaneNetworkPolicy
+                  - Ref: CrossplaneServicePolicy
+                  - Ref: CrossplaneDiscoveryPolicy
+                  - Ref: CrossplaneNetworkCreatePolicy
+              - Sid: NeverChangeRoleTrustOrBoundary
+                Effect: Deny
+                Action:
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:PutRolePermissionsBoundary
+                  - iam:DeleteRolePermissionsBoundary
+                Resource: '*'
+              - Sid: NeverChainFromExecutionIntoOtherRoles
+                Effect: Deny
+                Action: sts:AssumeRole
+                Resource: '*'
+        - PolicyName: environment-identity-lifecycle
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ObserveEnvironmentIAM
+                Effect: Allow
+                Action:
+                  - iam:GetInstanceProfile
+                  - iam:GetOpenIDConnectProvider
+                  - iam:GetRole
+                  - iam:GetRolePolicy
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListInstanceProfilesForRole
+                  - iam:ListOpenIDConnectProviders
+                  - iam:ListRolePolicies
+                  - iam:ListRoleTags
+                Resource: '*'
+              - Sid: CreateBoundedekscontrol
+                Effect: Allow
+                Action: iam:CreateRole
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-eks-control
+                Condition:
+                  ArnEquals:
+                    iam:PermissionsBoundary:
+                      Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-eks-control-boundary
+                  StringEquals:
+                    aws:RequestTag/platform.aws.goodnotes.io/environment:
+                      Ref: EnvironmentName
+              - Sid: CreateBoundedfargatepod
+                Effect: Allow
+                Action: iam:CreateRole
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-fargate-pod
+                Condition:
+                  ArnEquals:
+                    iam:PermissionsBoundary:
+                      Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-fargate-pod-boundary
+                  StringEquals:
+                    aws:RequestTag/platform.aws.goodnotes.io/environment:
+                      Ref: EnvironmentName
+              - Sid: CreateBoundedec2node
+                Effect: Allow
+                Action: iam:CreateRole
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-ec2-node
+                Condition:
+                  ArnEquals:
+                    iam:PermissionsBoundary:
+                      Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-ec2-node-boundary
+                  StringEquals:
+                    aws:RequestTag/platform.aws.goodnotes.io/environment:
+                      Ref: EnvironmentName
+              - Sid: CreateBoundedkarpenter
+                Effect: Allow
+                Action: iam:CreateRole
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-karpenter
+                Condition:
+                  ArnEquals:
+                    iam:PermissionsBoundary:
+                      Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-karpenter-boundary
+                  StringEquals:
+                    aws:RequestTag/platform.aws.goodnotes.io/environment:
+                      Ref: EnvironmentName
+              - Sid: CreateBoundedcilium
+                Effect: Allow
+                Action: iam:CreateRole
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-cilium
+                Condition:
+                  ArnEquals:
+                    iam:PermissionsBoundary:
+                      Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${EnvironmentName}-cilium-boundary
+                  StringEquals:
+                    aws:RequestTag/platform.aws.goodnotes.io/environment:
+                      Ref: EnvironmentName
+              - Sid: ManageEnvironmentRoles
+                Effect: Allow
+                Action:
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:GetRolePolicy
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListRolePolicies
+                  - iam:ListRoleTags
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:UpdateRole
+                  - iam:UpdateRoleDescription
+                Resource:
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-eks-control
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-fargate-pod
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-ec2-node
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-karpenter
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-cilium
+              - Sid: AttachOnlyReviewedAWSManagedPolicies
+                Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                Resource:
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-eks-control
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-fargate-pod
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-ec2-node
+                Condition:
+                  ArnEquals:
+                    iam:PolicyARN:
+                      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonEKSClusterPolicy
+                      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy
+                      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonEKSWorkerNodePolicy
+                      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly
+              - Sid: ManageEnvironmentInstanceProfile
+                Effect: Allow
+                Action:
+                  - iam:AddRoleToInstanceProfile
+                  - iam:CreateInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:TagInstanceProfile
+                  - iam:UntagInstanceProfile
+                Resource:
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/${EnvironmentName}-ec2-node
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-ec2-node
+              - Sid: ManageEnvironmentOIDCProvider
+                Effect: Allow
+                Action:
+                  - iam:AddClientIDToOpenIDConnectProvider
+                  - iam:DeleteOpenIDConnectProvider
+                  - iam:GetOpenIDConnectProvider
+                  - iam:RemoveClientIDFromOpenIDConnectProvider
+                  - iam:UpdateOpenIDConnectProviderThumbprint
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${TargetRegion}.amazonaws.com/id/*
+                Condition:
+                  StringEquals:
+                    aws:ResourceTag/platform.aws.goodnotes.io/environment:
+                      Ref: EnvironmentName
+              - Sid: PassOnlyEnvironmentServiceRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-eks-control
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-fargate-pod
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-ec2-node
+                Condition:
+                  StringEquals:
+                    iam:PassedToService:
+                      - ec2.amazonaws.com
+                      - eks.amazonaws.com
+                      - eks-fargate-pods.amazonaws.com
+              - Sid: EditOnlyControllerInlinePolicies
+                Effect: Allow
+                Action:
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                Resource:
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-karpenter
+                  - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${EnvironmentName}-cilium
+              - Sid: CreateTaggedOIDCProvider
+                Effect: Allow
+                Action: iam:CreateOpenIDConnectProvider
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${TargetRegion}.amazonaws.com/id/*
+                Condition:
+                  StringEquals:
+                    aws:RequestTag/platform.aws.goodnotes.io/environment:
+                      Ref: EnvironmentName
+              - Sid: TagOnlyOwnedOIDCProvider
+                Effect: Allow
+                Action: iam:TagOpenIDConnectProvider
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${TargetRegion}.amazonaws.com/id/*
+                Condition:
+                  StringEquals:
+                    aws:ResourceTag/platform.aws.goodnotes.io/environment:
+                      Ref: EnvironmentName
+                  StringEqualsIfExists:
+                    aws:RequestTag/platform.aws.goodnotes.io/environment:
+                      Ref: EnvironmentName
+              - Sid: RemoveOnlyNonOwnershipOIDCTags
+                Effect: Allow
+                Action: iam:UntagOpenIDConnectProvider
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${TargetRegion}.amazonaws.com/id/*
+                Condition:
+                  StringEquals:
+                    aws:ResourceTag/platform.aws.goodnotes.io/environment:
+                      Ref: EnvironmentName
+                  ForAllValues:StringNotEquals:
+                    aws:TagKeys:
+                      - platform.aws.goodnotes.io/environment
+      ManagedPolicyArns:
+        - Ref: CrossplaneNetworkPolicy
+        - Ref: CrossplaneServicePolicy
+        - Ref: CrossplaneDiscoveryPolicy
+        - Ref: CrossplaneNetworkCreatePolicy
+  EKSDeploymentRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RoleName:
+        Fn::Sub: ${EnvironmentName}-eks-deploy
+      Description:
+        Fn::Sub: Stable machine principal for Helm and Kubernetes Providers to access ${EnvironmentName}-cluster through an EKS Access Entry.
+      MaxSessionDuration:
+        Ref: MaxSessionDurationSeconds
+      PermissionsBoundary:
+        Ref: PermissionsBoundaryArn
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: TrustOnlyApprovedProviderSource
+            Effect: Allow
+            Principal:
+              AWS:
+                Ref: TrustedSourcePrincipalArn
+            Action: sts:AssumeRole
+      Tags:
+        - Key: managed-by
+          Value: cloudformation
+        - Key: platform.aws.goodnotes.io/component
+          Value: eks-remote-provider-identity
+        - Key: platform.aws.goodnotes.io/environment
+          Value:
+            Ref: EnvironmentName
+      Policies:
+        - PolicyName: describe-only-target-cluster
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: DescribeOnlyTargetCluster
+                Effect: Allow
+                Action: eks:DescribeCluster
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:eks:${TargetRegion}:${AWS::AccountId}:cluster/${EnvironmentName}-cluster
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion:
+                      Ref: TargetRegion
+  CrossplaneNetworkPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-xp-network-policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: MutateOwnedvpc
+            Effect: Allow
+            Action:
+              - ec2:DeleteVpc
+              - ec2:ModifyVpcAttribute
+              - ec2:AttachInternetGateway
+              - ec2:DetachInternetGateway
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:vpc/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: MutateOwnedinternetgateway
+            Effect: Allow
+            Action:
+              - ec2:DeleteInternetGateway
+              - ec2:AttachInternetGateway
+              - ec2:DetachInternetGateway
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:internet-gateway/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: MutateOwnedsubnet
+            Effect: Allow
+            Action:
+              - ec2:DeleteSubnet
+              - ec2:ModifySubnetAttribute
+              - ec2:AssociateRouteTable
+              - ec2:DisassociateRouteTable
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:subnet/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: MutateOwnedroutetable
+            Effect: Allow
+            Action:
+              - ec2:CreateRoute
+              - ec2:DeleteRoute
+              - ec2:ReplaceRoute
+              - ec2:DeleteRouteTable
+              - ec2:AssociateRouteTable
+              - ec2:DisassociateRouteTable
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:route-table/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: MutateOwnednatgateway
+            Effect: Allow
+            Action:
+              - ec2:DeleteNatGateway
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:natgateway/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: MutateOwnedelasticip
+            Effect: Allow
+            Action:
+              - ec2:ReleaseAddress
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:elastic-ip/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: MutateOwnedsecuritygroup
+            Effect: Allow
+            Action:
+              - ec2:DeleteSecurityGroup
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:AuthorizeSecurityGroupEgress
+              - ec2:RevokeSecurityGroupIngress
+              - ec2:RevokeSecurityGroupEgress
+              - ec2:UpdateSecurityGroupRuleDescriptionsIngress
+              - ec2:UpdateSecurityGroupRuleDescriptionsEgress
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:security-group/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: UpdateOnlyOwnedNetworkTags
+            Effect: Allow
+            Action: ec2:CreateTags
+            Resource:
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:vpc/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:internet-gateway/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:subnet/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:route-table/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:natgateway/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:elastic-ip/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:security-group/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+              StringEqualsIfExists:
+                aws:RequestTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: NeverRemoveNetworkOwnershipTag
+            Effect: Allow
+            Action: ec2:DeleteTags
+            Resource:
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:vpc/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:internet-gateway/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:subnet/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:route-table/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:natgateway/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:elastic-ip/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:security-group/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+              ForAllValues:StringNotEquals:
+                aws:TagKeys:
+                  - platform.aws.goodnotes.io/environment
+  CrossplaneServicePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-xp-service-policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ManageDedicatedEKSCluster
+            Effect: Allow
+            Action:
+              - eks:CreateAccessEntry
+              - eks:CreateAddon
+              - eks:CreateCluster
+              - eks:CreateFargateProfile
+              - eks:DeleteCluster
+              - eks:TagResource
+              - eks:UntagResource
+              - eks:UpdateClusterConfig
+              - eks:UpdateClusterVersion
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:eks:${TargetRegion}:${AWS::AccountId}:cluster/${EnvironmentName}-cluster
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+          - Sid: ManageDedicatedEKSChildren
+            Effect: Allow
+            Action:
+              - eks:AssociateAccessPolicy
+              - eks:DeleteAccessEntry
+              - eks:DeleteAddon
+              - eks:DeleteFargateProfile
+              - eks:DisassociateAccessPolicy
+              - eks:TagResource
+              - eks:UntagResource
+              - eks:UpdateAccessEntry
+              - eks:UpdateAddon
+            Resource:
+              - Fn::Sub: arn:${AWS::Partition}:eks:${TargetRegion}:${AWS::AccountId}:access-entry/${EnvironmentName}-cluster/*
+              - Fn::Sub: arn:${AWS::Partition}:eks:${TargetRegion}:${AWS::AccountId}:addon/${EnvironmentName}-cluster/*
+              - Fn::Sub: arn:${AWS::Partition}:eks:${TargetRegion}:${AWS::AccountId}:fargateprofile/${EnvironmentName}-cluster/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+          - Sid: ObserveDedicatedEKSChildren
+            Effect: Allow
+            Action:
+              - eks:DescribeAccessEntry
+              - eks:DescribeAddon
+              - eks:DescribeFargateProfile
+              - eks:ListAssociatedAccessPolicies
+            Resource:
+              - Fn::Sub: arn:${AWS::Partition}:eks:${TargetRegion}:${AWS::AccountId}:access-entry/${EnvironmentName}-cluster/*
+              - Fn::Sub: arn:${AWS::Partition}:eks:${TargetRegion}:${AWS::AccountId}:addon/${EnvironmentName}-cluster/*
+              - Fn::Sub: arn:${AWS::Partition}:eks:${TargetRegion}:${AWS::AccountId}:fargateprofile/${EnvironmentName}-cluster/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+          - Sid: ManageDedicatedInterruptionQueue
+            Effect: Allow
+            Action:
+              - sqs:CreateQueue
+              - sqs:DeleteQueue
+              - sqs:GetQueueAttributes
+              - sqs:GetQueueUrl
+              - sqs:ListQueueTags
+              - sqs:SetQueueAttributes
+              - sqs:TagQueue
+              - sqs:UntagQueue
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:sqs:${TargetRegion}:${AWS::AccountId}:${EnvironmentName}-karpenter-events
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+          - Sid: ManageDedicatedInterruptionRules
+            Effect: Allow
+            Action:
+              - events:DeleteRule
+              - events:DescribeRule
+              - events:DisableRule
+              - events:EnableRule
+              - events:ListTagsForResource
+              - events:ListTargetsByRule
+              - events:PutRule
+              - events:PutTargets
+              - events:RemoveTargets
+              - events:TagResource
+              - events:UntagResource
+            Resource:
+              - Fn::Sub: arn:${AWS::Partition}:events:${TargetRegion}:${AWS::AccountId}:rule/${EnvironmentName}-spot
+              - Fn::Sub: arn:${AWS::Partition}:events:${TargetRegion}:${AWS::AccountId}:rule/${EnvironmentName}-rebalance
+              - Fn::Sub: arn:${AWS::Partition}:events:${TargetRegion}:${AWS::AccountId}:rule/${EnvironmentName}-state
+              - Fn::Sub: arn:${AWS::Partition}:events:${TargetRegion}:${AWS::AccountId}:rule/${EnvironmentName}-health
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+  CrossplaneDiscoveryPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-xp-discovery-policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DiscoverRegionalInfrastructure
+            Effect: Allow
+            Action:
+              - ec2:DescribeAccountAttributes
+              - ec2:DescribeAddresses
+              - ec2:DescribeAvailabilityZones
+              - ec2:DescribeInstances
+              - ec2:DescribeInternetGateways
+              - ec2:DescribeNatGateways
+              - ec2:DescribeNetworkAcls
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DescribeRouteTables
+              - ec2:DescribeSecurityGroupReferences
+              - ec2:DescribeSecurityGroupRules
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeStaleSecurityGroups
+              - ec2:DescribeSubnets
+              - ec2:DescribeTags
+              - ec2:DescribeVpcAttribute
+              - ec2:DescribeVpcs
+              - eks:DescribeAccessEntry
+              - eks:DescribeAddon
+              - eks:DescribeAddonConfiguration
+              - eks:DescribeAddonVersions
+              - eks:DescribeCluster
+              - eks:DescribeClusterVersions
+              - eks:DescribeFargateProfile
+              - eks:DescribeUpdate
+              - eks:ListAccessEntries
+              - eks:ListAddons
+              - eks:ListAssociatedAccessPolicies
+              - eks:ListClusters
+              - eks:ListFargateProfiles
+              - eks:ListTagsForResource
+              - eks:ListUpdates
+              - events:ListRules
+              - sqs:ListQueues
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+  CrossplaneNetworkCreatePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: ${EnvironmentName}-xp-network-create-policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: CreateTaggedelasticip
+            Effect: Allow
+            Action:
+              - ec2:AllocateAddress
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:elastic-ip/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                aws:RequestTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: CreateTaggedinternetgateway
+            Effect: Allow
+            Action:
+              - ec2:CreateInternetGateway
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:internet-gateway/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                aws:RequestTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: CreateTaggedvpc
+            Effect: Allow
+            Action:
+              - ec2:CreateVpc
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:vpc/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                aws:RequestTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: CreateTaggedsubnet
+            Effect: Allow
+            Action:
+              - ec2:CreateSubnet
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:subnet/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                aws:RequestTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: CreateTaggedroutetable
+            Effect: Allow
+            Action:
+              - ec2:CreateRouteTable
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:route-table/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                aws:RequestTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: CreateTaggedsecuritygroup
+            Effect: Allow
+            Action:
+              - ec2:CreateSecurityGroup
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:security-group/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                aws:RequestTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: CreateTaggednatgateway
+            Effect: Allow
+            Action:
+              - ec2:CreateNatGateway
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:natgateway/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                aws:RequestTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: CreateOnlyInsideOwnedVpc
+            Effect: Allow
+            Action:
+              - ec2:CreateSubnet
+              - ec2:CreateRouteTable
+              - ec2:CreateSecurityGroup
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:vpc/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: CreateNatOnlyInsideOwnedSubnet
+            Effect: Allow
+            Action: ec2:CreateNatGateway
+            Resource:
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:subnet/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:elastic-ip/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:vpc/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                ec2:ResourceTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+          - Sid: TagDuringNetworkCreation
+            Effect: Allow
+            Action: ec2:CreateTags
+            Resource:
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:vpc/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:internet-gateway/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:subnet/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:route-table/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:natgateway/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:elastic-ip/*
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${TargetRegion}:${AWS::AccountId}:security-group/*
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  Ref: TargetRegion
+                aws:RequestTag/platform.aws.goodnotes.io/environment:
+                  Ref: EnvironmentName
+                ec2:CreateAction:
+                  - AllocateAddress
+                  - CreateInternetGateway
+                  - CreateVpc
+                  - CreateSubnet
+                  - CreateRouteTable
+                  - CreateSecurityGroup
+                  - CreateNatGateway
+Outputs:
+  EffectiveSourcePrincipalArn:
+    Description: External renewable source role; no IAM user or access key is created.
+    Value:
+      Ref: TrustedSourcePrincipalArn
+  SourcePrincipalMode:
+    Description: Only renewable role sessions are accepted.
+    Value: external-role
+  CrossplaneAWSProviderRoleArn:
+    Description: Put this ARN in the ClusterProviderConfig assumeRoleChain.
+    Value:
+      Fn::GetAtt:
+        - CrossplaneAWSProviderRole
+        - Arn
+  CrossplaneAWSProviderRoleName:
+    Description: Stable IAM role name retained outside the environment XR.
+    Value:
+      Ref: CrossplaneAWSProviderRole
+  RecommendedClusterProviderConfigName:
+    Description: Environment-specific ProviderConfig name used by the XR.
+    Value:
+      Fn::Sub: ${EnvironmentName}-aws
+  EKSDeploymentRoleArn:
+    Description: Stable access.deploymentPrincipalArn for the remote Helm and Kubernetes Providers. The EKS Access Entry is created later by the environment.
+    Value:
+      Fn::GetAtt:
+        - EKSDeploymentRole
+        - Arn

@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "CreateEC2SpotServiceLinkedRole",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "CreateEKSServiceLinkedRole",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "CreateEKSFargateServiceLinkedRole",
+    "ParameterValue": "false"
+  }
+]

@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "eks-dev-spot"
+  },
+  {
+    "ParameterKey": "TargetRegion",
+    "ParameterValue": "us-east-1"
+  },
+  {
+    "ParameterKey": "TrustedSourcePrincipalArn",
+    "ParameterValue": "__REPLACE_RENEWABLE_SOURCE_ROLE_ARN__"
+  },
+  {
+    "ParameterKey": "PermissionsBoundaryArn",
+    "ParameterValue": "__REPLACE_REVIEWED_BOOTSTRAP_BOUNDARY_ARN__"
+  },
+  {
+    "ParameterKey": "MaxSessionDurationSeconds",
+    "ParameterValue": "3600"
+  }
+]

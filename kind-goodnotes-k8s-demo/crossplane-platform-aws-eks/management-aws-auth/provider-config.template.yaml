@@ -1,0 +1,19 @@
+---
+apiVersion: aws.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: __REPLACE_AWS_PROVIDER_CONFIG__
+  annotations:
+    platform.aws.goodnotes.io/do-not-apply: "true"
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-bootstrap
+    platform.aws.goodnotes.io/resource-role: aws-provider-identity
+spec:
+  # The operator assumes the execution role once BEFORE publication. No SDK chain.
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: eks-platform-aws-session
+      key: credentials
+  skip_metadata_api_check: true

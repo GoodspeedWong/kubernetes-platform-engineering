@@ -1,0 +1,171 @@
+schemaVersion: 1
+generatedAt: "2026-08-29"
+policy:
+  floatingVersionsAllowed: false
+  awsMutationAllowed: false
+  artifactDigestsRequiredWhenPublished: true
+
+targets:
+  managementPlane:
+    kubernetes: "1.35.0"
+    crossplaneCore: "v2.2.1"
+    crossplaneCLI: "v2.3.0"
+    renderEngine:
+      mode: source-cli
+      version: "v2.2.1"
+      module: github.com/crossplane/crossplane/v2
+      moduleSum: "h1:1oN2prePpsJAi6+W/qe53AA/nHCeDQCIMDth5jetSr4="
+      command: cmd/crank
+      install: "go install github.com/crossplane/crossplane/v2/cmd/crank@v2.2.1"
+    schemaValidation:
+      mode: source-cache
+      cliVersion: "v2.3.0"
+      cacheIdentity: "xpkg.crossplane.io/crossplane/crossplane:v2.2.1"
+      sourceModule: github.com/crossplane/crossplane/v2
+      sourceVersion: "v2.2.1"
+      sourceModuleSum: "h1:1oN2prePpsJAi6+W/qe53AA/nHCeDQCIMDth5jetSr4="
+      coreCRDCount: 21
+      coreCRDsSha256: "16ef7232f41db560be0189845d5b060e88667513aa46e575dac00a2ffdd1738c"
+  workloadPlane:
+    approvedRegion: us-east-1
+    approvedAvailabilityZones:
+      - us-east-1a
+      - us-east-1b
+    eksKubernetes: "1.35"
+    defaultArchitecture: amd64
+    capacityType: spot
+    cniOwner: cilium
+    kubeProxyOwner: cilium
+
+packages:
+  providerFamilyAWS:
+    version: "v2.5.3"
+    reference: "xpkg.upbound.io/upbound/provider-family-aws@sha256:7971b0bc2602b82d9303425f2cf65aacff789a704cd5b24aa2367345a35a3c09"
+    source: "https://marketplace.upbound.io/providers/upbound/provider-family-aws/v2.5.3"
+  providerAWSEC2:
+    version: "v2.5.3"
+    reference: "xpkg.upbound.io/upbound/provider-aws-ec2@sha256:12ebddf9621715876a0c998168475db59241c5e447d839b3145ac3c23def1adc"
+    source: "https://marketplace.upbound.io/providers/upbound/provider-aws-ec2/v2.5.3"
+  providerAWSEKS:
+    version: "v2.5.3"
+    reference: "xpkg.upbound.io/upbound/provider-aws-eks@sha256:649f497fbcc262ce36a5d44dc70cc007a6fa6cd6baeea75d4509f2bc4c9db904"
+    source: "https://marketplace.upbound.io/providers/upbound/provider-aws-eks/v2.5.3"
+  providerAWSIAM:
+    version: "v2.5.3"
+    reference: "xpkg.upbound.io/upbound/provider-aws-iam@sha256:570c487ce2f51455be3d12193b19aebaab7711b40abdfa4f9b02cbb3b9925980"
+    source: "https://marketplace.upbound.io/providers/upbound/provider-aws-iam/v2.5.3"
+  providerAWSRDS:
+    version: "v2.5.3"
+    reference: "xpkg.upbound.io/upbound/provider-aws-rds@sha256:43e6ece61aa7d653c9e7fc865e77f3e825447ca3d14eaf9ffec2f79433f1b4ad"
+    source: "https://marketplace.upbound.io/providers/upbound/provider-aws-rds/v2.5.3"
+  providerAWSS3:
+    version: "v2.5.3"
+    reference: "xpkg.upbound.io/upbound/provider-aws-s3@sha256:8caec5d5a189aed41fa7d10505d9bd72c46440321fcac15e02286f6f7af3bf45"
+    source: "https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v2.5.3"
+  providerAWSSQS:
+    version: "v2.5.3"
+    reference: "xpkg.upbound.io/upbound/provider-aws-sqs@sha256:73f0d8415ea7be785446b924e47b67a4fa39c0927f4c79ed4d6b90893a97d56e"
+    source: "https://marketplace.upbound.io/providers/upbound/provider-aws-sqs/v2.5.3"
+  providerAWSCloudWatchEvents:
+    version: "v2.5.3"
+    reference: "xpkg.upbound.io/upbound/provider-aws-cloudwatchevents@sha256:5266e756ac5083a00c270e6aa1d56f98db6b771c0581ddf055a0dcd9eadbb3d9"
+    source: "https://marketplace.upbound.io/providers/upbound/provider-aws-cloudwatchevents/v2.5.3"
+  providerHelm:
+    version: "v1.4.0"
+    reference: "xpkg.crossplane.io/crossplane-contrib/provider-helm@sha256:2280e32fd4e42f0bbe66d1dcd8ddd9cc3a4d46eaba9f4bccddfaec2302664926"
+    source: "https://github.com/crossplane-contrib/provider-helm/releases/tag/v1.4.0"
+  providerKubernetes:
+    version: "v1.2.1"
+    reference: "xpkg.crossplane.io/crossplane-contrib/provider-kubernetes@sha256:f6665ef36536d3c54343ac9142376c402fdac8d39591c9720ead104f8d9bf612"
+    source: "https://marketplace.upbound.io/providers/crossplane-contrib/provider-kubernetes/v1.2.1"
+  functionKCL:
+    version: "v0.12.1"
+    module: github.com/crossplane-contrib/function-kcl
+    repository: "https://github.com/crossplane-contrib/function-kcl.git"
+    sourceCommit: "3cdebf135f3747952fe209d4873667286410ea05"
+    reference: "xpkg.upbound.io/crossplane-contrib/function-kcl@sha256:01ce52d971354cc5159529b9022046644896958d977e0842dc6e398a2137ba2a"
+    source: "https://marketplace.upbound.io/functions/crossplane-contrib/function-kcl/v0.12.1"
+  functionAutoReady:
+    version: "v0.6.5"
+    module: github.com/crossplane/function-auto-ready
+    repository: "https://github.com/crossplane-contrib/function-auto-ready.git"
+    sourceCommit: "ee1161ba8c0073439181b73237a88e8985e4e45d"
+    reference: "xpkg.crossplane.io/crossplane-contrib/function-auto-ready@sha256:49cc4de717311b589c0ad9ae6d8d2256e2754ab4884391a5655b71df29bc3684"
+    source: "https://marketplace.upbound.io/functions/crossplane-contrib/function-auto-ready/v0.6.5"
+  functionPatchAndTransform:
+    version: "v0.8.2"
+    reference: "xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform@sha256:c05a9add149bfa6fd0e6fc485e669d60a5d50c2f816b8303af4d5a89586795d0"
+    source: "https://marketplace.upbound.io/functions/crossplane-contrib/function-patch-and-transform/v0.8.2"
+
+charts:
+  cilium:
+    version: "1.20.1"
+    appVersion: "1.20.1"
+    url: "https://helm.cilium.io/cilium-1.20.1.tgz"
+    sha256: "06210eef7c23d15f7699c79e2fe3a1ec9c389024c5c5c006ea04022d322449a2"
+    reference: "oci://quay.io/cilium/charts/cilium:1.20.1"
+    manifestDigest: "sha256:906ce40d35daad838d12add8a5ba7033e767767f51799a93c7eace2cec9cdc05"
+    contentSha256: "06210eef7c23d15f7699c79e2fe3a1ec9c389024c5c5c006ea04022d322449a2"
+    kubernetesCompatibility: "1.33-1.36 tested; target 1.35"
+    images:
+      agent: "quay.io/cilium/cilium:v1.20.1@sha256:ae9ea21f7427fe24bc6ea7247eb552157a1b0a431744045d3f641545ca71d11b"
+      operatorAWS: "quay.io/cilium/operator-aws:v1.20.1@sha256:7cf0cb0e6584f72ca8de951a1be03829f69fcaeba69dc6c7856fc4470545acd7"
+  karpenterCRD:
+    version: "1.14.1"
+    appVersion: "1.14.1"
+    reference: "oci://public.ecr.aws/karpenter/karpenter-crd:1.14.1"
+    manifestDigest: "sha256:c05c566740802506a34f3500b33e2fa3c9254f60469e84e5e294a3bd8adefb9f"
+    contentSha256: "06759bdbd553e3bbf707e00cc56ca2efa0842f7f4388a172b8b57fb4f6798776"
+  karpenter:
+    version: "1.14.1"
+    appVersion: "1.14.1"
+    reference: "oci://public.ecr.aws/karpenter/karpenter:1.14.1"
+    manifestDigest: "sha256:91434e00fb102d6ee0d1bd34a4457a32fe01a8fa833fe1a2a37da4f50272079b"
+    contentSha256: "d5b62605a4cdad0e6fe9eb0b1a4332abb44606fb0f02a3fc6d780ac6ea5533b6"
+    kubernetesCompatibility: "Kubernetes 1.35 requires Karpenter >=1.9"
+    controllerImage: "public.ecr.aws/karpenter/controller:1.14.1@sha256:445baefaaa689029cc12ac1f659b916b0b82fb14308ce536f8521fcf079116fa"
+  argoCD:
+    chartVersion: "10.4.0"
+    appVersion: "v3.5.1"
+    url: "https://github.com/argoproj/argo-helm/releases/download/argo-cd-10.4.0/argo-cd-10.4.0.tgz"
+    sha256: "5abb71c17bc082e13dc3d90023972f871ea8e1dfc26d8f3218ceade215b971d5"
+    reference: "oci://ghcr.io/argoproj/argo-helm/argo-cd:10.4.0"
+    manifestDigest: "sha256:8ff18ee7a22670305555167ea31f24a88e2f912cf0a872f852e1880886d4c308"
+    contentSha256: "5abb71c17bc082e13dc3d90023972f871ea8e1dfc26d8f3218ceade215b971d5"
+    kubernetesCompatibility: "Argo CD 3.5 tested on Kubernetes 1.33-1.36"
+    image: "quay.io/argoproj/argocd:v3.5.1@sha256:0deb1a1c917629b960ead995ae3b6069450a866992676599658687ef9a641ee8"
+    redisImage: "ecr-public.aws.com/docker/library/redis:8.6.4-alpine@sha256:2cc044fc5a07c9b701f8f1255a309ae9ad7856e694ac03513bf3648c01e40763"
+
+eksAddons:
+  coreDNS:
+    kubernetes: "1.35"
+    version: "v1.14.3-eksbuild.3"
+    imageDigest: null
+    imageDigestGate: "Resolve from the selected region during U0; the add-on version is already fixed."
+    source: "https://docs.aws.amazon.com/eks/latest/userguide/managing-coredns.html"
+  amazonVPCCNI:
+    desiredState: absent-on-ec2
+  kubeProxy:
+    desiredState: absent
+
+nodeImages:
+  al2023:
+    kubernetes: "1.35"
+    architecture: amd64
+    release: "v20260728"
+    alias: "al2023@v20260728"
+    releaseVersion: "1.35.6-20260728"
+    regionalAMI:
+      region: us-east-1
+      imageId: ami-00edcc837bc2137e0
+      resolvedAt: "2026-08-29"
+    regionalAMIGate: "PASS: read-only U0 discovery resolved the locked AL2023 release in us-east-1; deployment input still requires a reviewed environment-specific catalog."
+    source: "https://github.com/awslabs/amazon-eks-ami/releases/tag/v20260728"
+
+compatibilitySources:
+  crossplaneCLI: "https://docs.crossplane.io/cli/latest/command-reference/"
+  cilium: "https://docs.cilium.io/en/stable/network/kubernetes/compatibility/"
+  karpenter: "https://karpenter.sh/preview/upgrading/compatibility/"
+  argoCD: "https://argo-cd.readthedocs.io/en/stable/operator-manual/installation/"
+  al2023: "https://docs.aws.amazon.com/eks/latest/userguide/al2023.html"
+  remoteEKSAuthentication: "https://github.com/crossplane-contrib/provider-kubernetes/blob/v1.2.1/pkg/kube/client/aws/aws.go"

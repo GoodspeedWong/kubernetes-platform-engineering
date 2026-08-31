@@ -1,0 +1,20 @@
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: eks-node-images-template
+  annotations:
+    platform.aws.goodnotes.io/template: "true"
+    platform.aws.goodnotes.io/do-not-apply: "true"
+spec:
+  data:
+    schemaVersion: 1
+    region: __REPLACE_AWS_REGION__
+    kubernetes: "1.35"
+    images:
+      amd64:
+        family: AL2023
+        release: v20260728
+        releaseVersion: 1.35.6-20260728
+        alias: al2023@v20260728
+        amiId: ami-00000000000000000
+        status: replace-before-deployment

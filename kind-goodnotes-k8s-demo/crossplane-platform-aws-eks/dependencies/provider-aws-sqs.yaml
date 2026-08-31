@@ -1,0 +1,9 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: upbound-provider-aws-sqs
+  annotations:
+    platform.aws.goodnotes.io/version: v2.5.3
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-sqs@sha256:73f0d8415ea7be785446b924e47b67a4fa39c0927f4c79ed4d6b90893a97d56e
+  revisionActivationPolicy: Automatic

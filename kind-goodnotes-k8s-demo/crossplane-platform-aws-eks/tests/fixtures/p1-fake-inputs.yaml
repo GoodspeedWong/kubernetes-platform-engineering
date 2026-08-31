@@ -1,0 +1,24 @@
+apiVersion: platform.aws.goodnotes.io/v1alpha1
+kind: EKSOfflineFixture
+metadata:
+  name: p1-test-only
+  annotations:
+    platform.aws.goodnotes.io/fixture: TEST-ONLY
+spec:
+  accountId: "000000000000"
+  region: __REPLACE_AWS_REGION__
+  clusterEndpoint: https://eks.TEST-ONLY.invalid
+  managementRoleARN: arn:aws:iam::000000000000:role/TEST-ONLY-management
+  nodeAMI: ami-00000000000000000
+  observed:
+    cluster:
+      apiVersion: eks.aws.m.upbound.io/v1beta1
+      kind: Cluster
+      metadata:
+        name: TEST-ONLY-observed
+      status:
+        atProvider:
+          endpoint: https://eks.TEST-ONLY.invalid
+          identity:
+            oidc:
+              issuer: https://oidc.eks.TEST-ONLY.invalid/id/TEST-ONLY

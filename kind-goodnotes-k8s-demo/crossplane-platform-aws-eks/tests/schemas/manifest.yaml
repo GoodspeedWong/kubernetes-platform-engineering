@@ -1,0 +1,135 @@
+schemaVersion: 1
+generatedDirectory: generated
+checksumFile: checksums.sha256
+platform: amd64
+
+localXRDs:
+  - path: ../../cluster/xrd.yaml
+    requiredFromPhase: P2
+  - path: ../../foundation/xrd.yaml
+    requiredFromPhase: P2
+  - path: ../../environment/xrd.yaml
+    requiredFromPhase: P2
+  - path: ../../../crossplane-platform-aws-network/xrd.yaml
+    requiredFromPhase: P3
+
+sources:
+  - id: provider-aws-ec2
+    type: xpkg
+    packageKey: providerAWSEC2
+    crds:
+      - name: vpcs.ec2.aws.m.upbound.io
+        file: providers/aws-ec2/vpcs.yaml
+      - name: internetgateways.ec2.aws.m.upbound.io
+        file: providers/aws-ec2/internetgateways.yaml
+      - name: routetables.ec2.aws.m.upbound.io
+        file: providers/aws-ec2/routetables.yaml
+      - name: routes.ec2.aws.m.upbound.io
+        file: providers/aws-ec2/routes.yaml
+      - name: subnets.ec2.aws.m.upbound.io
+        file: providers/aws-ec2/subnets.yaml
+      - name: routetableassociations.ec2.aws.m.upbound.io
+        file: providers/aws-ec2/routetableassociations.yaml
+      - name: eips.ec2.aws.m.upbound.io
+        file: providers/aws-ec2/eips.yaml
+      - name: natgateways.ec2.aws.m.upbound.io
+        file: providers/aws-ec2/natgateways.yaml
+      - name: securitygroups.ec2.aws.m.upbound.io
+        file: providers/aws-ec2/securitygroups.yaml
+      - name: securitygrouprules.ec2.aws.m.upbound.io
+        file: providers/aws-ec2/securitygrouprules.yaml
+  - id: provider-aws-eks
+    type: xpkg
+    packageKey: providerAWSEKS
+    crds:
+      - name: clusters.eks.aws.m.upbound.io
+        file: providers/aws-eks/clusters.yaml
+      - name: addons.eks.aws.m.upbound.io
+        file: providers/aws-eks/addons.yaml
+      - name: fargateprofiles.eks.aws.m.upbound.io
+        file: providers/aws-eks/fargateprofiles.yaml
+      - name: accessentries.eks.aws.m.upbound.io
+        file: providers/aws-eks/accessentries.yaml
+      - name: accesspolicyassociations.eks.aws.m.upbound.io
+        file: providers/aws-eks/accesspolicyassociations.yaml
+  - id: provider-aws-iam
+    type: xpkg
+    packageKey: providerAWSIAM
+    crds:
+      - name: roles.iam.aws.m.upbound.io
+        file: providers/aws-iam/roles.yaml
+      - name: rolepolicies.iam.aws.m.upbound.io
+        file: providers/aws-iam/rolepolicies.yaml
+      - name: rolepolicyattachments.iam.aws.m.upbound.io
+        file: providers/aws-iam/rolepolicyattachments.yaml
+      - name: openidconnectproviders.iam.aws.m.upbound.io
+        file: providers/aws-iam/openidconnectproviders.yaml
+      - name: instanceprofiles.iam.aws.m.upbound.io
+        file: providers/aws-iam/instanceprofiles.yaml
+  - id: provider-aws-sqs
+    type: xpkg
+    packageKey: providerAWSSQS
+    crds:
+      - name: queues.sqs.aws.m.upbound.io
+        file: providers/aws-sqs/queues.yaml
+      - name: queuepolicies.sqs.aws.m.upbound.io
+        file: providers/aws-sqs/queuepolicies.yaml
+  - id: provider-aws-cloudwatchevents
+    type: xpkg
+    packageKey: providerAWSCloudWatchEvents
+    crds:
+      - name: rules.cloudwatchevents.aws.m.upbound.io
+        file: providers/aws-cloudwatchevents/rules.yaml
+      - name: targets.cloudwatchevents.aws.m.upbound.io
+        file: providers/aws-cloudwatchevents/targets.yaml
+  - id: provider-helm
+    type: xpkg
+    packageKey: providerHelm
+    crds:
+      - name: releases.helm.m.crossplane.io
+        file: providers/helm/releases.yaml
+      - name: clusterproviderconfigs.helm.m.crossplane.io
+        file: providers/helm/clusterproviderconfigs.yaml
+  - id: provider-kubernetes
+    type: xpkg
+    packageKey: providerKubernetes
+    crds:
+      - name: objects.kubernetes.m.crossplane.io
+        file: providers/kubernetes/objects.yaml
+      - name: clusterproviderconfigs.kubernetes.m.crossplane.io
+        file: providers/kubernetes/clusterproviderconfigs.yaml
+  - id: crossplane-core
+    type: httpCRDs
+    crds:
+      - name: usages.protection.crossplane.io
+        file: crossplane/usages.yaml
+        url: https://raw.githubusercontent.com/crossplane/crossplane/v2.2.1/cluster/crds/protection.crossplane.io_usages.yaml
+        sha256: 23fc67d87deaf87b6a2a869334544ee94840917370a3dc55b390778d341fc855
+      - name: clusterusages.protection.crossplane.io
+        file: crossplane/clusterusages.yaml
+        url: https://raw.githubusercontent.com/crossplane/crossplane/v2.2.1/cluster/crds/protection.crossplane.io_clusterusages.yaml
+        sha256: 721f00cd3ec294b1d75c41a379cae61dee14cf614f0ecbe4b0329193f796be44
+      - name: environmentconfigs.apiextensions.crossplane.io
+        file: crossplane/environmentconfigs.yaml
+        url: https://raw.githubusercontent.com/crossplane/crossplane/v2.2.1/cluster/crds/apiextensions.crossplane.io_environmentconfigs.yaml
+        sha256: e7195819ad029752668bba52546aa141ad257495a8ab0c7149df0e8561079aff
+  - id: karpenter
+    type: ociChart
+    chartKey: karpenterCRD
+    crds:
+      - name: ec2nodeclasses.karpenter.k8s.aws
+        file: remote/karpenter/ec2nodeclasses.yaml
+      - name: nodepools.karpenter.sh
+        file: remote/karpenter/nodepools.yaml
+      - name: nodeclaims.karpenter.sh
+        file: remote/karpenter/nodeclaims.yaml
+  - id: argo-cd
+    type: httpChart
+    chartKey: argoCD
+    crds:
+      - name: applications.argoproj.io
+        file: remote/argocd/applications.yaml
+      - name: applicationsets.argoproj.io
+        file: remote/argocd/applicationsets.yaml
+      - name: appprojects.argoproj.io
+        file: remote/argocd/appprojects.yaml

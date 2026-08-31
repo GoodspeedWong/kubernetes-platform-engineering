@@ -1,0 +1,15 @@
+# Local generated outputs and private operator material are not source code.
+/outputs/
+/.cache/
+/private/
+/identity-review.json
+/iam-contract.json
+/PREPARATION.json
+/aws-config.before
+*.reviewed.json
+*.local.json
+*.kubeconfig
+*.pem
+*.key
+.env
+.env.*

@@ -1,0 +1,48 @@
+schemaVersion: 1
+context: kind-kube-nebula-a
+namespace: crossplane-system
+coreApiGroups:
+  - platform.aws.goodnotes.io
+  - platform.k8s.goodnotes.io
+  - platform.trading-openclaw.io
+providers:
+  - name: crossplane-contrib-provider-aws-ec2
+    revision: crossplane-contrib-provider-aws-ec2-12ebddf96217
+    package: xpkg.upbound.io/upbound/provider-aws-ec2:v2.5.3
+    service: ec2
+    sessionReader: true
+  - name: crossplane-contrib-provider-aws-eks
+    revision: crossplane-contrib-provider-aws-eks-649f497fbcc2
+    package: xpkg.upbound.io/upbound/provider-aws-eks:v2.5.3
+    service: eks
+    sessionReader: true
+  - name: crossplane-contrib-provider-aws-iam
+    revision: crossplane-contrib-provider-aws-iam-570c487ce2f5
+    package: xpkg.upbound.io/upbound/provider-aws-iam:v2.5.3
+    service: iam
+    sessionReader: true
+  - name: crossplane-contrib-provider-aws-rds
+    revision: crossplane-contrib-provider-aws-rds-43e6ece61aa7
+    package: xpkg.upbound.io/upbound/provider-aws-rds:v2.5.3
+    service: rds
+    sessionReader: false
+  - name: crossplane-contrib-provider-aws-s3
+    revision: crossplane-contrib-provider-aws-s3-8caec5d5a189
+    package: xpkg.upbound.io/upbound/provider-aws-s3:v2.5.3
+    service: s3
+    sessionReader: false
+  - name: upbound-provider-family-aws
+    revision: upbound-provider-family-aws-7971b0bc2602
+    package: xpkg.upbound.io/upbound/provider-family-aws:v2.5.3
+    service: aws
+    sessionReader: false
+  - name: provider-kubernetes
+    revision: provider-kubernetes-f6665ef36536
+    package: xpkg.crossplane.io/crossplane-contrib/provider-kubernetes:v1.2.1
+    service: kubernetes
+    sessionReader: false
+  - name: provider-helm
+    revision: provider-helm-20a901f62fa8
+    package: xpkg.crossplane.io/crossplane-contrib/provider-helm:v1.0.4
+    service: helm
+    sessionReader: false

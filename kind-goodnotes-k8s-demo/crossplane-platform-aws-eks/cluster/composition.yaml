@@ -1,0 +1,1660 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xeksclusters.platform.aws.goodnotes.io
+  labels:
+    platform.aws.goodnotes.io/composition-role: owner
+    platform.aws.goodnotes.io/revision-review: required
+    platform.aws.goodnotes.io/type: eks-cluster
+  annotations:
+    platform.aws.goodnotes.io/implementation-phase: P4
+spec:
+  compositeTypeRef:
+    apiVersion: platform.aws.goodnotes.io/v1alpha1
+    kind: XEKSCluster
+  mode: Pipeline
+  pipeline:
+    - step: render-eks-identity-fargate-and-interruption-infrastructure
+      functionRef:
+        name: function-kcl
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLInput
+        spec:
+          source: |
+            import json
+
+            oxr = option("params").oxr
+            ocds = option("params").ocds
+            _dxr = option("params").dxr
+            params = oxr.spec.parameters
+
+            cluster_xr_name = oxr.metadata.name
+            cluster_name = cluster_xr_name
+            environment_name = params.environmentRef.name
+            network_name = params.networkRef.name
+            namespace = params.managementNamespace
+            region = params.region
+            provider_config = params.providerConfigRef
+            partition = params.access.adminPrincipalArn.split(":")[1]
+            account_id = params.access.adminPrincipalArn.split(":")[4]
+
+            ec2_api = "ec2.aws.m.upbound.io/v1beta1"
+            eks_api = "eks.aws.m.upbound.io/v1beta1"
+            iam_api = "iam.aws.m.upbound.io/v1beta1"
+            sqs_api = "sqs.aws.m.upbound.io/v1beta1"
+            events_api = "cloudwatchevents.aws.m.upbound.io/v1beta1"
+            usage_api = "protection.crossplane.io/v1beta1"
+
+            eks_role_name = environment_name + "-eks-control"
+            fargate_role_name = environment_name + "-fargate-pod"
+            karpenter_role_name = environment_name + "-karpenter"
+            cilium_role_name = environment_name + "-cilium"
+            node_role_name = environment_name + "-ec2-node"
+            instance_profile_name = node_role_name
+            remote_kubeconfig_secret_name = environment_name + "-eks-access"
+            queue_name = environment_name + "-karpenter-events"
+            spot_rule_name = environment_name + "-spot"
+            rebalance_rule_name = environment_name + "-rebalance"
+            instance_state_rule_name = environment_name + "-state"
+            scheduled_change_rule_name = environment_name + "-health"
+
+            cluster_arn = "arn:" + partition + ":eks:" + region + ":" + account_id + ":cluster/" + cluster_name
+            node_role_arn = "arn:" + partition + ":iam::" + account_id + ":role/" + node_role_name
+            instance_profile_arn = "arn:" + partition + ":iam::" + account_id + ":instance-profile/" + instance_profile_name
+            queue_arn = "arn:" + partition + ":sqs:" + region + ":" + account_id + ":" + queue_name
+            spot_rule_arn = "arn:" + partition + ":events:" + region + ":" + account_id + ":rule/" + spot_rule_name
+            rebalance_rule_arn = "arn:" + partition + ":events:" + region + ":" + account_id + ":rule/" + rebalance_rule_name
+            instance_state_rule_arn = "arn:" + partition + ":events:" + region + ":" + account_id + ":rule/" + instance_state_rule_name
+            scheduled_change_rule_arn = "arn:" + partition + ":events:" + region + ":" + account_id + ":rule/" + scheduled_change_rule_name
+
+            owner_labels = {
+                "platform.aws.goodnotes.io/managed-by" = "crossplane"
+                "platform.aws.goodnotes.io/environment" = environment_name
+                "platform.aws.goodnotes.io/cluster" = cluster_name
+            }
+            common_tags = {
+                "managed-by" = "crossplane"
+                "platform.aws.goodnotes.io/environment" = environment_name
+                "platform.aws.goodnotes.io/cluster" = cluster_name
+            }
+            cluster_membership_tag = {
+                key: "owned" for key in ["kubernetes.io/cluster/" + cluster_name]
+            }
+            managed_spec = {
+                managementPolicies = ["*"]
+                providerConfigRef = provider_config
+            }
+
+            vpc_selector = {
+                matchControllerRef = False
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "vpc"
+                }
+                namespace = namespace
+            }
+            private_subnet_selector = {
+                matchControllerRef = False
+                matchLabels = {
+                    "platform.aws.goodnotes.io/environment" = environment_name
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "subnet"
+                    "platform.aws.goodnotes.io/subnet-visibility" = "private"
+                }
+                namespace = namespace
+            }
+
+            node_security_group_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "node-security-group"
+            }
+            node_security_group_selector = {
+                matchControllerRef = True
+                matchLabels = node_security_group_labels
+                namespace = namespace
+            }
+            node_security_group = {
+                apiVersion = ec2_api
+                kind = "SecurityGroup"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "node-security-group"
+                    }
+                    labels = node_security_group_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        description = "Dedicated EKS control-plane and Karpenter node security boundary for " + environment_name
+                        name = environment_name + "-eks-nodes"
+                        region = region
+                        revokeRulesOnDelete = True
+                        tags = {
+                            **common_tags
+                            **cluster_membership_tag
+                            Name = environment_name + "-eks-nodes"
+                            "karpenter.sh/discovery" = environment_name
+                        }
+                        vpcIdSelector = vpc_selector
+                    }
+                }
+            }
+            node_security_group_self_ingress = {
+                apiVersion = ec2_api
+                kind = "SecurityGroupRule"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "node-security-group-self-ingress"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "node-security-group-rule"
+                        "platform.aws.goodnotes.io/rule-scope" = "self-ingress"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        description = "Allow traffic only among members of the dedicated cluster security group"
+                        fromPort = 0
+                        protocol = "-1"
+                        region = region
+                        securityGroupIdSelector = node_security_group_selector
+                        self = True
+                        toPort = 0
+                        type = "ingress"
+                    }
+                }
+            }
+            node_security_group_egress = {
+                apiVersion = ec2_api
+                kind = "SecurityGroupRule"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "node-security-group-egress"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "node-security-group-rule"
+                        "platform.aws.goodnotes.io/rule-scope" = "egress"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        cidrBlocks = ["0.0.0.0/0"]
+                        description = "Allow required private-subnet egress through the environment NAT path"
+                        fromPort = 0
+                        protocol = "-1"
+                        region = region
+                        securityGroupIdSelector = node_security_group_selector
+                        toPort = 0
+                        type = "egress"
+                    }
+                }
+            }
+
+            eks_role_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "eks-cluster-role"
+            }
+            fargate_role_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "fargate-pod-execution-role"
+            }
+            karpenter_role_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "karpenter-controller-role"
+            }
+            cilium_role_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "cilium-operator-role"
+            }
+            node_role_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "ec2-node-role"
+            }
+
+            eks_cluster_role = {
+                apiVersion = iam_api
+                kind = "Role"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = eks_role_name
+                        "krm.kcl.dev/composition-resource-name" = "eks-cluster-role"
+                    }
+                    labels = eks_role_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        assumeRolePolicy = json.encode({
+                            Version = "2012-10-17"
+                            Statement = [{
+                                Effect = "Allow"
+                                Principal = {Service = "eks.amazonaws.com"}
+                                Action = "sts:AssumeRole"
+                            }]
+                        })
+                        permissionsBoundary = "arn:" + partition + ":iam::" + account_id + ":policy/" + eks_role_name + "-boundary"
+                        description = "Dedicated EKS control-plane role for " + environment_name
+                        forceDetachPolicies = True
+                        tags = common_tags
+                    }
+                }
+            }
+            fargate_pod_execution_role = {
+                apiVersion = iam_api
+                kind = "Role"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = fargate_role_name
+                        "krm.kcl.dev/composition-resource-name" = "fargate-pod-execution-role"
+                    }
+                    labels = fargate_role_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        assumeRolePolicy = json.encode({
+                            Version = "2012-10-17"
+                            Statement = [{
+                                Effect = "Allow"
+                                Principal = {Service = "eks-fargate-pods.amazonaws.com"}
+                                Action = "sts:AssumeRole"
+                                Condition = {
+                                    ArnLike = {
+                                        "aws:SourceArn" = "arn:" + partition + ":eks:" + region + ":" + account_id + ":fargateprofile/" + cluster_name + "/*"
+                                    }
+                                }
+                            }]
+                        })
+                        permissionsBoundary = "arn:" + partition + ":iam::" + account_id + ":policy/" + fargate_role_name + "-boundary"
+                        description = "Fargate Pod execution role restricted to the environment cluster"
+                        forceDetachPolicies = True
+                        tags = common_tags
+                    }
+                }
+            }
+            ec2_node_role = {
+                apiVersion = iam_api
+                kind = "Role"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = node_role_name
+                        "krm.kcl.dev/composition-resource-name" = "ec2-node-role"
+                    }
+                    labels = node_role_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        assumeRolePolicy = json.encode({
+                            Version = "2012-10-17"
+                            Statement = [{
+                                Effect = "Allow"
+                                Principal = {Service = "ec2.amazonaws.com"}
+                                Action = "sts:AssumeRole"
+                            }]
+                        })
+                        permissionsBoundary = "arn:" + partition + ":iam::" + account_id + ":policy/" + node_role_name + "-boundary"
+                        description = "Karpenter EC2 node role for the Spot-only data plane"
+                        forceDetachPolicies = True
+                        tags = common_tags
+                    }
+                }
+            }
+
+            attachment_specs = [
+                {
+                    name = "eks-cluster-policy-attachment"
+                    roleLabels = eks_role_labels
+                    policyArn = "arn:" + partition + ":iam::aws:policy/AmazonEKSClusterPolicy"
+                },
+                {
+                    name = "fargate-execution-policy-attachment"
+                    roleLabels = fargate_role_labels
+                    policyArn = "arn:" + partition + ":iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
+                },
+                {
+                    name = "node-worker-policy-attachment"
+                    roleLabels = node_role_labels
+                    policyArn = "arn:" + partition + ":iam::aws:policy/AmazonEKSWorkerNodePolicy"
+                },
+                {
+                    name = "node-ecr-pull-policy-attachment"
+                    roleLabels = node_role_labels
+                    policyArn = "arn:" + partition + ":iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
+                },
+            ]
+            role_policy_attachments = [{
+                apiVersion = iam_api
+                kind = "RolePolicyAttachment"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = attachment.name
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "managed-policy-attachment"
+                        "platform.aws.goodnotes.io/attachment" = attachment.name
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        policyArn = attachment.policyArn
+                        roleSelector = {
+                            matchControllerRef = True
+                            matchLabels = attachment.roleLabels
+                            namespace = namespace
+                        }
+                    }
+                }
+            } for attachment in attachment_specs]
+
+            instance_profile_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "ec2-node-instance-profile"
+            }
+            ec2_node_instance_profile = {
+                apiVersion = iam_api
+                kind = "InstanceProfile"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = instance_profile_name
+                        "krm.kcl.dev/composition-resource-name" = "ec2-node-instance-profile"
+                    }
+                    labels = instance_profile_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        roleSelector = {
+                            matchControllerRef = True
+                            matchLabels = node_role_labels
+                            namespace = namespace
+                        }
+                        tags = common_tags
+                    }
+                }
+            }
+
+            eks_cluster_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "eks-control-plane"
+            }
+            eks_cluster_selector = {
+                matchControllerRef = True
+                matchLabels = eks_cluster_labels
+                namespace = namespace
+            }
+            eks_control_plane = {
+                apiVersion = eks_api
+                kind = "Cluster"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = cluster_name
+                        "krm.kcl.dev/composition-resource-name" = "eks-control-plane"
+                    }
+                    labels = eks_cluster_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        accessConfig = {
+                            authenticationMode = "API"
+                            bootstrapClusterCreatorAdminPermissions = False
+                        }
+                        bootstrapSelfManagedAddons = False
+                        deletionProtection = params.lifecycle.deletionProtection
+                        enabledClusterLogTypes = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+                        region = region
+                        roleArnSelector = {
+                            matchControllerRef = True
+                            matchLabels = eks_role_labels
+                            namespace = namespace
+                        }
+                        tags = {
+                            **common_tags
+                            **cluster_membership_tag
+                            Name = cluster_name
+                        }
+                        version = params.kubernetesVersion
+                        vpcConfig = {
+                            endpointPrivateAccess = True
+                            endpointPublicAccess = True
+                            publicAccessCidrs = params.access.publicAccessCidrs
+                            securityGroupIdSelector = node_security_group_selector
+                            subnetIdSelector = private_subnet_selector
+                        }
+                    }
+                }
+            }
+
+            fargate_profile_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "karpenter-fargate-profile"
+            }
+            karpenter_fargate_profile = {
+                apiVersion = eks_api
+                kind = "FargateProfile"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = "karpenter"
+                        "krm.kcl.dev/composition-resource-name" = "karpenter-fargate-profile"
+                    }
+                    labels = fargate_profile_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        clusterNameSelector = eks_cluster_selector
+                        podExecutionRoleArnSelector = {
+                            matchControllerRef = True
+                            matchLabels = fargate_role_labels
+                            namespace = namespace
+                        }
+                        region = region
+                        selector = [{
+                            namespace = "karpenter"
+                            labels = {
+                                "app.kubernetes.io/instance" = "karpenter"
+                                "app.kubernetes.io/name" = "karpenter"
+                            }
+                        }]
+                        subnetIdSelector = private_subnet_selector
+                        tags = common_tags
+                    }
+                }
+            }
+
+            coredns_addon_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "coredns-addon"
+            }
+            coredns_addon = {
+                apiVersion = eks_api
+                kind = "Addon"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "coredns-addon"
+                    }
+                    labels = coredns_addon_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        addonName = "coredns"
+                        addonVersion = "v1.14.3-eksbuild.3"
+                        clusterNameSelector = eks_cluster_selector
+                        preserve = False
+                        region = region
+                        resolveConflictsOnCreate = "OVERWRITE"
+                        resolveConflictsOnUpdate = "PRESERVE"
+                        tags = common_tags
+                    }
+                }
+            }
+
+            admin_access_entry_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "eks-access-entry"
+                "platform.aws.goodnotes.io/access-role" = "administrator"
+            }
+            deployment_access_entry_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "eks-access-entry"
+                "platform.aws.goodnotes.io/access-role" = "deployment"
+            }
+            node_access_entry_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "eks-access-entry"
+                "platform.aws.goodnotes.io/access-role" = "ec2-node"
+            }
+            admin_access_entry = {
+                apiVersion = eks_api
+                kind = "AccessEntry"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "admin-access-entry"
+                    }
+                    labels = admin_access_entry_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        clusterNameSelector = eks_cluster_selector
+                        principalArn = params.access.adminPrincipalArn
+                        region = region
+                        tags = common_tags
+                        type = "STANDARD"
+                    }
+                }
+            }
+            deployment_access_entry = {
+                apiVersion = eks_api
+                kind = "AccessEntry"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "deployment-access-entry"
+                    }
+                    labels = deployment_access_entry_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        clusterNameSelector = eks_cluster_selector
+                        principalArn = params.access.deploymentPrincipalArn
+                        region = region
+                        tags = common_tags
+                        type = "STANDARD"
+                    }
+                }
+            }
+            node_access_entry = {
+                apiVersion = eks_api
+                kind = "AccessEntry"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "node-access-entry"
+                    }
+                    labels = node_access_entry_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        clusterNameSelector = eks_cluster_selector
+                        principalArnFromRoleSelector = {
+                            matchControllerRef = True
+                            matchLabels = node_role_labels
+                            namespace = namespace
+                        }
+                        region = region
+                        tags = common_tags
+                        type = "EC2_LINUX"
+                    }
+                }
+            }
+
+            admin_access_policy_association = {
+                apiVersion = eks_api
+                kind = "AccessPolicyAssociation"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "admin-access-policy-association"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "eks-access-policy-association"
+                        "platform.aws.goodnotes.io/access-role" = "administrator"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        accessScope = {type = "cluster"}
+                        clusterNameSelector = eks_cluster_selector
+                        policyArn = "arn:" + partition + ":eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+                        principalArnSelector = {
+                            matchControllerRef = True
+                            matchLabels = admin_access_entry_labels
+                            namespace = namespace
+                        }
+                        region = region
+                    }
+                }
+            }
+            deployment_access_policy_association = {
+                apiVersion = eks_api
+                kind = "AccessPolicyAssociation"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "deployment-access-policy-association"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "eks-access-policy-association"
+                        "platform.aws.goodnotes.io/access-role" = "deployment"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        accessScope = {type = "cluster"}
+                        clusterNameSelector = eks_cluster_selector
+                        policyArn = "arn:" + partition + ":eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+                        principalArnSelector = {
+                            matchControllerRef = True
+                            matchLabels = deployment_access_entry_labels
+                            namespace = namespace
+                        }
+                        region = region
+                    }
+                }
+            }
+
+            interruption_queue_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "interruption-queue"
+            }
+            interruption_queue = {
+                apiVersion = sqs_api
+                kind = "Queue"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "interruption-queue"
+                    }
+                    labels = interruption_queue_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        messageRetentionSeconds = 300
+                        name = queue_name
+                        region = region
+                        sqsManagedSseEnabled = True
+                        tags = common_tags
+                        visibilityTimeoutSeconds = 30
+                    }
+                }
+            }
+
+            event_rule_specs = [
+                {
+                    name = "spot-interruption-rule"
+                    externalName = spot_rule_name
+                    scope = "spot-interruption"
+                    pattern = {
+                        source = ["aws.ec2"]
+                        "detail-type" = ["EC2 Spot Instance Interruption Warning"]
+                    }
+                },
+                {
+                    name = "rebalance-rule"
+                    externalName = rebalance_rule_name
+                    scope = "rebalance"
+                    pattern = {
+                        source = ["aws.ec2"]
+                        "detail-type" = ["EC2 Instance Rebalance Recommendation"]
+                    }
+                },
+                {
+                    name = "instance-state-rule"
+                    externalName = instance_state_rule_name
+                    scope = "instance-state"
+                    pattern = {
+                        source = ["aws.ec2"]
+                        "detail-type" = ["EC2 Instance State-change Notification"]
+                        detail = {
+                            state = ["stopping", "stopped", "shutting-down", "terminated"]
+                        }
+                    }
+                },
+                {
+                    name = "scheduled-change-rule"
+                    externalName = scheduled_change_rule_name
+                    scope = "scheduled-change"
+                    pattern = {
+                        source = ["aws.health"]
+                        "detail-type" = ["AWS Health Event"]
+                    }
+                },
+            ]
+            event_rules = [{
+                apiVersion = events_api
+                kind = "Rule"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = rule.externalName
+                        "krm.kcl.dev/composition-resource-name" = rule.name
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "interruption-event-rule"
+                        "platform.aws.goodnotes.io/event-scope" = rule.scope
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        description = "Karpenter interruption event forwarding for " + rule.scope
+                        eventPattern = json.encode(rule.pattern)
+                        region = region
+                        state = "ENABLED"
+                        tags = common_tags
+                    }
+                }
+            } for rule in event_rule_specs]
+
+            event_target_specs = [
+                {name = "spot-interruption-target", scope = "spot-interruption"},
+                {name = "rebalance-target", scope = "rebalance"},
+                {name = "instance-state-target", scope = "instance-state"},
+                {name = "scheduled-change-target", scope = "scheduled-change"},
+            ]
+            event_targets = [{
+                apiVersion = events_api
+                kind = "Target"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = target.name
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "interruption-event-target"
+                        "platform.aws.goodnotes.io/event-scope" = target.scope
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        arn = queue_arn
+                        region = region
+                        ruleSelector = {
+                            matchControllerRef = True
+                            matchLabels = {
+                                **owner_labels
+                                "platform.aws.goodnotes.io/resource-role" = "interruption-event-rule"
+                                "platform.aws.goodnotes.io/event-scope" = target.scope
+                            }
+                            namespace = namespace
+                        }
+                        targetId = "KarpenterInterruptionQueue"
+                    }
+                }
+            } for target in event_target_specs]
+
+            interruption_queue_policy = {
+                apiVersion = sqs_api
+                kind = "QueuePolicy"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "interruption-queue-policy"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "interruption-queue-policy"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        policy = json.encode({
+                            Version = "2012-10-17"
+                            Statement = [
+                                {
+                                    Sid = "AllowOnlyOwnedEventRules"
+                                    Effect = "Allow"
+                                    Principal = {Service = "events.amazonaws.com"}
+                                    Action = "sqs:SendMessage"
+                                    Resource = queue_arn
+                                    Condition = {
+                                        ArnEquals = {
+                                            "aws:SourceArn" = [spot_rule_arn, rebalance_rule_arn, instance_state_rule_arn, scheduled_change_rule_arn]
+                                        }
+                                    }
+                                },
+                                {
+                                    Sid = "DenyInsecureTransport"
+                                    Effect = "Deny"
+                                    Principal = "*"
+                                    Action = "sqs:*"
+                                    Resource = queue_arn
+                                    Condition = {Bool = {"aws:SecureTransport" = "false"}}
+                                },
+                            ]
+                        })
+                        queueUrlSelector = {
+                            matchControllerRef = True
+                            matchLabels = interruption_queue_labels
+                            namespace = namespace
+                        }
+                        region = region
+                    }
+                }
+            }
+
+            _observed_cluster = ocds["eks-control-plane"].Resource?.status?.atProvider if "eks-control-plane" in ocds else {}
+            _observed_identity = _observed_cluster?.identity or []
+            _observed_oidc = _observed_identity[0]?.oidc or [] if len(_observed_identity) > 0 else []
+            _oidc_issuer = _observed_oidc[0]?.issuer or "" if len(_observed_oidc) > 0 else ""
+            _observed_oidc_provider = ocds["eks-oidc-provider"].Resource if "eks-oidc-provider" in ocds else {}
+            if _oidc_issuer == "" and _observed_oidc_provider?.spec?.forProvider?.url:
+                _oidc_issuer = _observed_oidc_provider.spec.forProvider.url
+            oidc_host_path = _oidc_issuer.replace("https://", "") if _oidc_issuer != "" else ""
+            _oidc_provider_arn = _observed_oidc_provider?.status?.atProvider?.arn or ""
+            _certificate_authorities = _observed_cluster?.certificateAuthority or []
+            _certificate_authority_data = _certificate_authorities[0]?.data or "" if len(_certificate_authorities) > 0 else ""
+            _cluster_endpoint = _observed_cluster?.endpoint or ""
+            _connection_material_ready = _observed_cluster?.status == "ACTIVE" and _cluster_endpoint != "" and _certificate_authority_data != ""
+            if _oidc_provider_arn == "" and _oidc_issuer != "" and "eks-oidc-provider" in ocds:
+                _oidc_provider_arn = "arn:" + partition + ":iam::" + account_id + ":oidc-provider/" + oidc_host_path
+
+            eks_oidc_provider_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "eks-oidc-provider"
+            }
+            eks_oidc_provider = {
+                apiVersion = iam_api
+                kind = "OpenIDConnectProvider"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "eks-oidc-provider"
+                    }
+                    labels = eks_oidc_provider_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        clientIdList = ["sts.amazonaws.com"]
+                        tags = common_tags
+                        url = _oidc_issuer
+                    }
+                }
+            }
+            oidc_resources = [eks_oidc_provider] if _oidc_issuer != "" else []
+
+            karpenter_trust_sub = {key: "system:serviceaccount:karpenter:karpenter" for key in [oidc_host_path + ":sub"]}
+            cilium_trust_sub = {key: "system:serviceaccount:kube-system:cilium-operator" for key in [oidc_host_path + ":sub"]}
+            trust_audience = {key: "sts.amazonaws.com" for key in [oidc_host_path + ":aud"]}
+            karpenter_controller_role = {
+                apiVersion = iam_api
+                kind = "Role"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = karpenter_role_name
+                        "krm.kcl.dev/composition-resource-name" = "karpenter-controller-role"
+                    }
+                    labels = karpenter_role_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        assumeRolePolicy = json.encode({
+                            Version = "2012-10-17"
+                            Statement = [{
+                                Effect = "Allow"
+                                Principal = {Federated = _oidc_provider_arn}
+                                Action = "sts:AssumeRoleWithWebIdentity"
+                                Condition = {StringEquals = {**karpenter_trust_sub, **trust_audience}}
+                            }]
+                        })
+                        permissionsBoundary = "arn:" + partition + ":iam::" + account_id + ":policy/" + karpenter_role_name + "-boundary"
+                        description = "IRSA role for the Karpenter controller only"
+                        forceDetachPolicies = True
+                        tags = common_tags
+                    }
+                }
+            }
+            cilium_operator_role = {
+                apiVersion = iam_api
+                kind = "Role"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = cilium_role_name
+                        "krm.kcl.dev/composition-resource-name" = "cilium-operator-role"
+                    }
+                    labels = cilium_role_labels
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        assumeRolePolicy = json.encode({
+                            Version = "2012-10-17"
+                            Statement = [{
+                                Effect = "Allow"
+                                Principal = {Federated = _oidc_provider_arn}
+                                Action = "sts:AssumeRoleWithWebIdentity"
+                                Condition = {StringEquals = {**cilium_trust_sub, **trust_audience}}
+                            }]
+                        })
+                        permissionsBoundary = "arn:" + partition + ":iam::" + account_id + ":policy/" + cilium_role_name + "-boundary"
+                        description = "IRSA role for the Cilium AWS ENI operator only"
+                        forceDetachPolicies = True
+                        tags = common_tags
+                    }
+                }
+            }
+
+            request_cluster_tag = {key: "owned" for key in ["aws:RequestTag/kubernetes.io/cluster/" + cluster_name]}
+            resource_cluster_tag = {key: "owned" for key in ["aws:ResourceTag/kubernetes.io/cluster/" + cluster_name]}
+            request_cilium_cluster_tag = {key: cluster_name for key in ["aws:RequestTag/io.cilium/cluster-name"]}
+            resource_cilium_cluster_tag = {key: cluster_name for key in ["aws:ResourceTag/io.cilium/cluster-name"]}
+            subnet_cluster_tag = {key: "shared" for key in ["aws:ResourceTag/kubernetes.io/cluster/" + cluster_name]}
+            karpenter_controller_policy = {
+                apiVersion = iam_api
+                kind = "RolePolicy"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = "karpenter-controller"
+                        "krm.kcl.dev/composition-resource-name" = "karpenter-controller-policy"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "karpenter-controller-policy"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        policy = json.encode({
+                            Version = "2012-10-17"
+                            Statement = [
+                                {
+                                    Sid = "AllowScopedEC2InstanceAccessActions"
+                                    Effect = "Allow"
+                                    Action = ["ec2:CreateFleet", "ec2:RunInstances"]
+                                    Resource = [
+                                        "arn:" + partition + ":ec2:" + region + "::image/*",
+                                        "arn:" + partition + ":ec2:" + region + "::snapshot/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":security-group/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":subnet/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":capacity-reservation/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":placement-group/*",
+                                    ]
+                                },
+                                {
+                                    Sid = "AllowScopedEC2LaunchTemplateAccessActions"
+                                    Effect = "Allow"
+                                    Action = ["ec2:CreateFleet", "ec2:RunInstances"]
+                                    Resource = "arn:" + partition + ":ec2:" + region + ":" + account_id + ":launch-template/*"
+                                    Condition = {
+                                        StringEquals = resource_cluster_tag
+                                        StringLike = {"aws:ResourceTag/karpenter.sh/nodepool" = "*"}
+                                    }
+                                },
+                                {
+                                    Sid = "AllowScopedEC2InstanceActionsWithTags"
+                                    Effect = "Allow"
+                                    Action = ["ec2:CreateFleet", "ec2:CreateLaunchTemplate", "ec2:RunInstances"]
+                                    Resource = [
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":fleet/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":instance/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":volume/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":network-interface/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":launch-template/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":spot-instances-request/*",
+                                    ]
+                                    Condition = {
+                                        StringEquals = {
+                                            **request_cluster_tag
+                                            "aws:RequestTag/platform.aws.goodnotes.io/environment" = environment_name
+                                            "aws:RequestTag/eks:eks-cluster-name" = cluster_name
+                                        }
+                                        StringLike = {"aws:RequestTag/karpenter.sh/nodepool" = "*"}
+                                    }
+                                },
+                                {
+                                    Sid = "AllowScopedResourceCreationTagging"
+                                    Effect = "Allow"
+                                    Action = "ec2:CreateTags"
+                                    Resource = [
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":fleet/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":instance/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":volume/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":network-interface/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":launch-template/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":spot-instances-request/*",
+                                    ]
+                                    Condition = {
+                                        StringEquals = {
+                                            **request_cluster_tag
+                                            "aws:RequestTag/platform.aws.goodnotes.io/environment" = environment_name
+                                            "aws:RequestTag/eks:eks-cluster-name" = cluster_name
+                                            "ec2:CreateAction" = ["CreateFleet", "CreateLaunchTemplate", "RunInstances"]
+                                        }
+                                        StringLike = {"aws:RequestTag/karpenter.sh/nodepool" = "*"}
+                                    }
+                                },
+                                {
+                                    Sid = "AllowScopedResourceTagging"
+                                    Effect = "Allow"
+                                    Action = "ec2:CreateTags"
+                                    Resource = "arn:" + partition + ":ec2:" + region + ":" + account_id + ":instance/*"
+                                    Condition = {
+                                        StringEquals = {
+                                            **resource_cluster_tag
+                                            "aws:ResourceTag/platform.aws.goodnotes.io/environment" = environment_name
+                                        }
+                                        StringLike = {"aws:ResourceTag/karpenter.sh/nodepool" = "*"}
+                                        StringEqualsIfExists = {"aws:RequestTag/eks:eks-cluster-name" = cluster_name}
+                                        "ForAllValues:StringEquals" = {"aws:TagKeys" = ["eks:eks-cluster-name", "karpenter.sh/nodeclaim", "Name"]}
+                                    }
+                                },
+                                {
+                                    Sid = "AllowScopedDeletion"
+                                    Effect = "Allow"
+                                    Action = ["ec2:DeleteLaunchTemplate", "ec2:TerminateInstances"]
+                                    Resource = [
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":instance/*",
+                                        "arn:" + partition + ":ec2:" + region + ":" + account_id + ":launch-template/*",
+                                    ]
+                                    Condition = {
+                                        StringEquals = {
+                                            **resource_cluster_tag
+                                            "aws:ResourceTag/platform.aws.goodnotes.io/environment" = environment_name
+                                        }
+                                        StringLike = {"aws:ResourceTag/karpenter.sh/nodepool" = "*"}
+                                    }
+                                },
+                                {
+                                    Sid = "AllowRegionalReadOnlyDiscovery"
+                                    Effect = "Allow"
+                                    Action = [
+                                        "ec2:DescribeCapacityReservations", "ec2:DescribeImages",
+                                        "ec2:DescribeInstances", "ec2:DescribeInstanceStatus",
+                                        "ec2:DescribeInstanceTypeOfferings", "ec2:DescribeInstanceTypes",
+                                        "ec2:DescribeLaunchTemplates", "ec2:DescribePlacementGroups",
+                                        "ec2:DescribeSecurityGroups", "ec2:DescribeSpotPriceHistory",
+                                        "ec2:DescribeSubnets"
+                                    ]
+                                    Resource = "*"
+                                    Condition = {StringEquals = {"aws:RequestedRegion" = region}}
+                                },
+                                {
+                                    Sid = "AllowPricingReadOnly"
+                                    Effect = "Allow"
+                                    Action = "pricing:GetProducts"
+                                    Resource = "*"
+                                },
+                                {
+                                    Sid = "AllowZonalShiftStatusReadOnly"
+                                    Effect = "Allow"
+                                    Action = "arc-zonal-shift:GetManagedResource"
+                                    Resource = "*"
+                                    Condition = {StringEquals = {"arc-zonal-shift:ResourceIdentifier" = cluster_arn}}
+                                },
+                                {
+                                    Sid = "AllowUnscopedInstanceProfileList"
+                                    Effect = "Allow"
+                                    Action = "iam:ListInstanceProfiles"
+                                    Resource = "*"
+                                },
+                                {
+                                    Sid = "AllowLockedPublicAMIParameters"
+                                    Effect = "Allow"
+                                    Action = "ssm:GetParameter"
+                                    Resource = "arn:" + partition + ":ssm:" + region + "::parameter/aws/service/eks/optimized-ami/*"
+                                },
+                                {
+                                    Sid = "AllowExactNodeRolePassRole"
+                                    Effect = "Allow"
+                                    Action = "iam:PassRole"
+                                    Resource = node_role_arn
+                                    Condition = {StringEquals = {"iam:PassedToService" = ["ec2.amazonaws.com", "ec2.amazonaws.com.cn"]}}
+                                },
+                                {
+                                    Sid = "AllowExactClusterRead"
+                                    Effect = "Allow"
+                                    Action = "eks:DescribeCluster"
+                                    Resource = cluster_arn
+                                },
+                                {
+                                    Sid = "AllowExactInterruptionQueueConsumption"
+                                    Effect = "Allow"
+                                    Action = ["sqs:DeleteMessage", "sqs:GetQueueUrl", "sqs:ReceiveMessage"]
+                                    Resource = queue_arn
+                                },
+                                {
+                                    Sid = "AllowExactInstanceProfileRead"
+                                    Effect = "Allow"
+                                    Action = "iam:GetInstanceProfile"
+                                    Resource = instance_profile_arn
+                                },
+                            ]
+                        })
+                        roleSelector = {
+                            matchControllerRef = True
+                            matchLabels = karpenter_role_labels
+                            namespace = namespace
+                        }
+                    }
+                }
+            }
+
+            cilium_operator_policy = {
+                apiVersion = iam_api
+                kind = "RolePolicy"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "crossplane.io/external-name" = "cilium-operator"
+                        "krm.kcl.dev/composition-resource-name" = "cilium-operator-policy"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "cilium-operator-policy"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        policy = json.encode({
+                            Version = "2012-10-17"
+                            Statement = [
+                                {
+                                    Sid = "AllowRegionalENIDiscovery"
+                                    Effect = "Allow"
+                                    Action = [
+                                        "ec2:DescribeInstances", "ec2:DescribeInstanceTypes",
+                                        "ec2:DescribeNetworkInterfaces", "ec2:DescribeRouteTables",
+                                        "ec2:DescribeSecurityGroups", "ec2:DescribeSubnets",
+                                        "ec2:DescribeTags", "ec2:DescribeVpcs"
+                                    ]
+                                    Resource = "*"
+                                    Condition = {StringEquals = {"aws:RequestedRegion" = region}}
+                                },
+                                {
+                                    Sid = "AllowTaggedENICreation"
+                                    Effect = "Allow"
+                                    Action = "ec2:CreateNetworkInterface"
+                                    Resource = "arn:" + partition + ":ec2:" + region + ":" + account_id + ":network-interface/*"
+                                    Condition = {
+                                        StringEquals = {
+                                            **request_cilium_cluster_tag
+                                            "aws:RequestTag/io.cilium/cilium-managed" = "true"
+                                            "aws:RequestTag/platform.aws.goodnotes.io/environment" = environment_name
+                                            "aws:RequestedRegion" = region
+                                        }
+                                    }
+                                },
+                                {
+                                    Sid = "AllowPrivateSubnetENICreation"
+                                    Effect = "Allow"
+                                    Action = "ec2:CreateNetworkInterface"
+                                    Resource = "arn:" + partition + ":ec2:" + region + ":" + account_id + ":subnet/*"
+                                    Condition = {
+                                        StringEquals = {
+                                            **subnet_cluster_tag
+                                            "aws:ResourceTag/platform.aws.goodnotes.io/environment" = environment_name
+                                            "aws:ResourceTag/platform.aws.goodnotes.io/subnet-visibility" = "private"
+                                            "aws:RequestedRegion" = region
+                                        }
+                                    }
+                                },
+                                {
+                                    Sid = "AllowDedicatedSecurityGroupENICreation"
+                                    Effect = "Allow"
+                                    Action = "ec2:CreateNetworkInterface"
+                                    Resource = "arn:" + partition + ":ec2:" + region + ":" + account_id + ":security-group/*"
+                                    Condition = {
+                                        StringEquals = {
+                                            **resource_cluster_tag
+                                            "aws:ResourceTag/platform.aws.goodnotes.io/environment" = environment_name
+                                            "aws:RequestedRegion" = region
+                                        }
+                                    }
+                                },
+                                {
+                                    Sid = "AllowTaggedENIAtCreation"
+                                    Effect = "Allow"
+                                    Action = "ec2:CreateTags"
+                                    Resource = "arn:" + partition + ":ec2:" + region + ":" + account_id + ":network-interface/*"
+                                    Condition = {
+                                        StringEquals = {
+                                            **request_cilium_cluster_tag
+                                            "aws:RequestTag/io.cilium/cilium-managed" = "true"
+                                            "aws:RequestTag/platform.aws.goodnotes.io/environment" = environment_name
+                                            "ec2:CreateAction" = "CreateNetworkInterface"
+                                        }
+                                    }
+                                },
+                                {
+                                    Sid = "AllowOwnedENIAttach"
+                                    Effect = "Allow"
+                                    Action = "ec2:AttachNetworkInterface"
+                                    Resource = "arn:" + partition + ":ec2:" + region + ":" + account_id + ":network-interface/*"
+                                    Condition = {
+                                        StringEquals = {
+                                            **resource_cilium_cluster_tag
+                                            "aws:ResourceTag/io.cilium/cilium-managed" = "true"
+                                            "aws:ResourceTag/platform.aws.goodnotes.io/environment" = environment_name
+                                            "aws:RequestedRegion" = region
+                                        }
+                                    }
+                                },
+                                {
+                                    Sid = "AllowOwnedNodeENIAttach"
+                                    Effect = "Allow"
+                                    Action = "ec2:AttachNetworkInterface"
+                                    Resource = "arn:" + partition + ":ec2:" + region + ":" + account_id + ":instance/*"
+                                    Condition = {
+                                        StringEquals = {
+                                            **resource_cluster_tag
+                                            "aws:ResourceTag/platform.aws.goodnotes.io/environment" = environment_name
+                                            "aws:RequestedRegion" = region
+                                        }
+                                    }
+                                },
+                                {
+                                    Sid = "AllowOwnedENIMutation"
+                                    Effect = "Allow"
+                                    Action = [
+                                        "ec2:AssignPrivateIpAddresses", "ec2:DeleteNetworkInterface",
+                                        "ec2:ModifyNetworkInterfaceAttribute", "ec2:UnassignPrivateIpAddresses"
+                                    ]
+                                    Resource = "arn:" + partition + ":ec2:" + region + ":" + account_id + ":network-interface/*"
+                                    Condition = {
+                                        StringEquals = {
+                                            **resource_cilium_cluster_tag
+                                            "aws:ResourceTag/io.cilium/cilium-managed" = "true"
+                                            "aws:ResourceTag/platform.aws.goodnotes.io/environment" = environment_name
+                                            "aws:RequestedRegion" = region
+                                        }
+                                    }
+                                },
+                            ]
+                        })
+                        roleSelector = {
+                            matchControllerRef = True
+                            matchLabels = cilium_role_labels
+                            namespace = namespace
+                        }
+                    }
+                }
+            }
+
+            rendered_irsa_resources = [
+                karpenter_controller_role,
+                cilium_operator_role,
+                karpenter_controller_policy,
+                cilium_operator_policy,
+            ] if _oidc_provider_arn != "" else []
+            irsa_resource_names = [
+                "karpenter-controller-role",
+                "cilium-operator-role",
+                "karpenter-controller-policy",
+                "cilium-operator-policy",
+            ]
+            preserved_irsa_resources = [{
+                apiVersion = ocds[name].Resource.apiVersion
+                kind = ocds[name].Resource.kind
+                metadata = {
+                    namespace = ocds[name].Resource.metadata.namespace
+                    annotations = ocds[name].Resource.metadata.annotations
+                    labels = ocds[name].Resource.metadata.labels
+                }
+                spec = ocds[name].Resource.spec
+            } for name in irsa_resource_names if name in ocds]
+            irsa_resources = rendered_irsa_resources if _oidc_provider_arn != "" else preserved_irsa_resources
+
+            remote_kubeconfig_labels = {
+                **owner_labels
+                "platform.aws.goodnotes.io/resource-role" = "remote-kubeconfig"
+            }
+            remote_kubeconfig_document = {
+                apiVersion = "v1"
+                kind = "Config"
+                clusters = [{
+                    name = cluster_name
+                    cluster = {
+                        "certificate-authority-data" = _certificate_authority_data
+                        server = _cluster_endpoint
+                    }
+                }]
+                contexts = [{
+                    name = cluster_name
+                    context = {
+                        cluster = cluster_name
+                        user = "aws-deployment-identity"
+                    }
+                }]
+                "current-context" = cluster_name
+                users = [{
+                    name = "aws-deployment-identity"
+                    user = {}
+                }]
+            }
+            karpenter_runtime_values = {
+                serviceAccount = {
+                    annotations = {
+                        "eks.amazonaws.com/role-arn" = "arn:" + partition + ":iam::" + account_id + ":role/" + karpenter_role_name
+                    }
+                }
+                settings = {
+                    clusterCABundle = _certificate_authority_data
+                    clusterEndpoint = _cluster_endpoint
+                    clusterName = cluster_name
+                    eksControlPlane = True
+                    interruptionQueue = queue_name
+                }
+            }
+            cilium_runtime_values = {
+                eni = {
+                    iamRole = "arn:" + partition + ":iam::" + account_id + ":role/" + cilium_role_name
+                }
+                k8sServiceHost = _cluster_endpoint.replace("https://", "")
+                k8sServicePort = "443"
+            }
+            remote_kubeconfig_secret = {
+                apiVersion = "v1"
+                kind = "Secret"
+                metadata = {
+                    name = remote_kubeconfig_secret_name
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "remote-kubeconfig-secret"
+                    }
+                    labels = remote_kubeconfig_labels
+                }
+                type = "Opaque"
+                stringData = {
+                    "cilium-values" = json.encode(cilium_runtime_values)
+                    "karpenter-values" = json.encode(karpenter_runtime_values)
+                    kubeconfig = json.encode(remote_kubeconfig_document)
+                }
+            }
+            _observed_remote_kubeconfig = ocds["remote-kubeconfig-secret"].Resource if "remote-kubeconfig-secret" in ocds else {}
+            preserved_remote_kubeconfig_secret = {
+                apiVersion = "v1"
+                kind = "Secret"
+                metadata = {
+                    name = remote_kubeconfig_secret_name
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "remote-kubeconfig-secret"
+                    }
+                    labels = remote_kubeconfig_labels
+                }
+                type = _observed_remote_kubeconfig?.type or "Opaque"
+                data = _observed_remote_kubeconfig?.data or {}
+            }
+            remote_connection_resources = [remote_kubeconfig_secret] if _connection_material_ready else ([preserved_remote_kubeconfig_secret] if "remote-kubeconfig-secret" in ocds else [])
+
+            cluster_uses_network = {
+                apiVersion = usage_api
+                kind = "ClusterUsage"
+                metadata = {
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "cluster-uses-network"
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "deletion-order"
+                    }
+                }
+                spec = {
+                    replayDeletion = True
+                    reason = "The EKS cluster must be removed before its dedicated network owner."
+                    by = {
+                        apiVersion = "platform.aws.goodnotes.io/v1alpha1"
+                        kind = "XEKSCluster"
+                        resourceRef = {name = cluster_xr_name}
+                    }
+                    of = {
+                        apiVersion = "platform.aws.goodnotes.io/v1alpha1"
+                        kind = "XNetwork"
+                        resourceRef = {name = network_name}
+                    }
+                }
+            }
+
+            static_resources = [
+                node_security_group,
+                node_security_group_self_ingress,
+                node_security_group_egress,
+                eks_cluster_role,
+                fargate_pod_execution_role,
+                ec2_node_role,
+                ec2_node_instance_profile,
+                eks_control_plane,
+                karpenter_fargate_profile,
+                coredns_addon,
+                admin_access_entry,
+                deployment_access_entry,
+                node_access_entry,
+                admin_access_policy_association,
+                deployment_access_policy_association,
+                interruption_queue,
+                interruption_queue_policy,
+                cluster_uses_network,
+            ] + role_policy_attachments + event_rules + event_targets + remote_connection_resources
+
+            usage_edges = [
+                {name = "usage-sg-self-ingress-sg", by = node_security_group_self_ingress, of = node_security_group},
+                {name = "usage-sg-egress-sg", by = node_security_group_egress, of = node_security_group},
+                {name = "usage-cluster-sg", by = eks_control_plane, of = node_security_group},
+                {name = "usage-cluster-role", by = eks_control_plane, of = eks_cluster_role},
+                {name = "usage-fargate-cluster", by = karpenter_fargate_profile, of = eks_control_plane},
+                {name = "usage-fargate-role", by = karpenter_fargate_profile, of = fargate_pod_execution_role},
+                {name = "usage-coredns-cluster", by = coredns_addon, of = eks_control_plane},
+                {name = "usage-admin-entry-cluster", by = admin_access_entry, of = eks_control_plane},
+                {name = "usage-deployment-entry-cluster", by = deployment_access_entry, of = eks_control_plane},
+                {name = "usage-node-entry-cluster", by = node_access_entry, of = eks_control_plane},
+                {name = "usage-admin-association-entry", by = admin_access_policy_association, of = admin_access_entry},
+                {name = "usage-deployment-association-entry", by = deployment_access_policy_association, of = deployment_access_entry},
+                {name = "usage-instance-profile-node-role", by = ec2_node_instance_profile, of = ec2_node_role},
+                {name = "usage-queue-policy-queue", by = interruption_queue_policy, of = interruption_queue},
+            ]
+            connection_usage_edges = [
+                {name = "usage-remote-kubeconfig-cluster", by = remote_kubeconfig_secret, of = eks_control_plane},
+            ] if len(remote_connection_resources) > 0 else []
+            attachment_usage_edges = [{
+                name = "usage-" + attachment.metadata.annotations["krm.kcl.dev/composition-resource-name"] + "-role"
+                by = attachment
+                of = {
+                    apiVersion = iam_api
+                    kind = "Role"
+                    metadata = {labels = attachment.spec.forProvider.roleSelector.matchLabels}
+                }
+            } for attachment in role_policy_attachments]
+            target_usage_edges = [{
+                name = "usage-" + target.metadata.annotations["krm.kcl.dev/composition-resource-name"] + "-rule"
+                by = target
+                of = {
+                    apiVersion = events_api
+                    kind = "Rule"
+                    metadata = {labels = target.spec.forProvider.ruleSelector.matchLabels}
+                }
+            } for target in event_targets] + [{
+                name = "usage-" + target.metadata.annotations["krm.kcl.dev/composition-resource-name"] + "-queue"
+                by = target
+                of = interruption_queue
+            } for target in event_targets]
+            oidc_usage_edges = [
+                {name = "usage-oidc-cluster", by = eks_oidc_provider, of = eks_control_plane}
+            ] if _oidc_issuer != "" else []
+            irsa_usage_edges = [
+                {name = "usage-karpenter-role-oidc", by = karpenter_controller_role, of = eks_oidc_provider},
+                {name = "usage-cilium-role-oidc", by = cilium_operator_role, of = eks_oidc_provider},
+                {name = "usage-karpenter-policy-role", by = karpenter_controller_policy, of = karpenter_controller_role},
+                {name = "usage-karpenter-policy-node-role", by = karpenter_controller_policy, of = ec2_node_role},
+                {name = "usage-karpenter-policy-queue", by = karpenter_controller_policy, of = interruption_queue},
+                {name = "usage-cilium-policy-role", by = cilium_operator_policy, of = cilium_operator_role},
+            ] if _oidc_provider_arn != "" else []
+            all_usage_edges = usage_edges + attachment_usage_edges + target_usage_edges + oidc_usage_edges + irsa_usage_edges + connection_usage_edges
+            usages = [{
+                apiVersion = usage_api
+                kind = "Usage"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = edge.name
+                    }
+                    labels = {
+                        **owner_labels
+                        "platform.aws.goodnotes.io/resource-role" = "deletion-order"
+                    }
+                }
+                spec = {
+                    replayDeletion = True
+                    by = {
+                        apiVersion = edge.by.apiVersion
+                        kind = edge.by.kind
+                        resourceSelector = {
+                            matchControllerRef = True
+                            matchLabels = edge.by.metadata.labels
+                        }
+                    }
+                    of = {
+                        apiVersion = edge.of.apiVersion
+                        kind = edge.of.kind
+                        resourceSelector = {
+                            matchControllerRef = True
+                            matchLabels = edge.of.metadata.labels
+                        }
+                    }
+                }
+            } for edge in all_usage_edges]
+
+            required_ready_names = [
+                "node-security-group", "node-security-group-self-ingress", "node-security-group-egress",
+                "eks-cluster-role", "fargate-pod-execution-role", "ec2-node-role",
+                "eks-cluster-policy-attachment", "fargate-execution-policy-attachment",
+                "node-worker-policy-attachment", "node-ecr-pull-policy-attachment",
+                "ec2-node-instance-profile", "eks-control-plane", "karpenter-fargate-profile",
+                "admin-access-entry", "deployment-access-entry", "node-access-entry",
+                "admin-access-policy-association", "deployment-access-policy-association",
+                "interruption-queue", "interruption-queue-policy",
+                "spot-interruption-rule", "spot-interruption-target",
+                "rebalance-rule", "rebalance-target", "instance-state-rule", "instance-state-target",
+                "scheduled-change-rule", "scheduled-change-target",
+                "eks-oidc-provider", "karpenter-controller-role", "cilium-operator-role",
+                "karpenter-controller-policy", "cilium-operator-policy",
+            ]
+            _missing_ready_names = [
+                name for name in required_ready_names
+                if name not in ocds or len([
+                    condition for condition in (ocds[name].Resource?.status?.conditions or [])
+                    if condition.type == "Ready" and condition.status == "True"
+                ]) == 0
+            ]
+            _observed_fargate = ocds["karpenter-fargate-profile"].Resource?.status?.atProvider if "karpenter-fargate-profile" in ocds else {}
+            _eks_control_plane_conditions = ocds["eks-control-plane"].Resource?.status?.conditions or [] if "eks-control-plane" in ocds else []
+            _eks_control_plane_ready = len([condition for condition in _eks_control_plane_conditions if condition.type == "Ready" and condition.status == "True"]) > 0
+            _native_deletion_protection_observed = _observed_cluster?.deletionProtection
+            native_deletion_protection_disabled = _eks_control_plane_ready and _native_deletion_protection_observed == False
+            _cluster_api_ready = _connection_material_ready and _oidc_issuer != ""
+            _fargate_ready = _observed_fargate?.status == "ACTIVE"
+            infrastructure_ready = _cluster_api_ready and _fargate_ready and len(_missing_ready_names) == 0
+
+            _dxr.status = _dxr.status or {}
+            _dxr.status.clusterName = cluster_name
+            _dxr.status.references = {
+                networkRef = params.networkRef
+                managementNamespace = namespace
+                fargateProfileName = "karpenter"
+                instanceProfileName = instance_profile_name
+                interruptionQueueName = queue_name
+                remoteKubeconfigSecretRef = {
+                    namespace = namespace
+                    name = remote_kubeconfig_secret_name
+                    key = "kubeconfig"
+                }
+            }
+            _dxr.status.actualVersions = _dxr.status?.actualVersions or {}
+            if _native_deletion_protection_observed == True or _native_deletion_protection_observed == False:
+                _dxr.status.deletionProtectionEnabled = _native_deletion_protection_observed
+            if _observed_cluster?.endpoint:
+                _dxr.status.endpoint = _observed_cluster.endpoint
+            if _certificate_authority_data != "":
+                _dxr.status.certificateAuthorityData = _certificate_authority_data
+            if _oidc_issuer != "":
+                _dxr.status.oidcIssuer = _oidc_issuer
+            if _observed_cluster?.version:
+                _dxr.status.actualVersions.controlPlane = _observed_cluster.version
+            if "coredns-addon" in ocds and ocds["coredns-addon"].Resource?.status?.atProvider?.addonVersion:
+                _dxr.status.actualVersions.coreDNSAddon = ocds["coredns-addon"].Resource.status.atProvider.addonVersion
+            if "node-security-group" in ocds and ocds["node-security-group"].Resource?.status?.atProvider?.id:
+                _dxr.status.references.nodeSecurityGroupId = ocds["node-security-group"].Resource.status.atProvider.id
+            if "eks-cluster-role" in ocds and ocds["eks-cluster-role"].Resource?.status?.atProvider?.arn:
+                _dxr.status.references.eksControlPlaneRoleArn = ocds["eks-cluster-role"].Resource.status.atProvider.arn
+            if "fargate-pod-execution-role" in ocds and ocds["fargate-pod-execution-role"].Resource?.status?.atProvider?.arn:
+                _dxr.status.references.fargatePodExecutionRoleArn = ocds["fargate-pod-execution-role"].Resource.status.atProvider.arn
+            if "karpenter-controller-role" in ocds and ocds["karpenter-controller-role"].Resource?.status?.atProvider?.arn:
+                _dxr.status.references.karpenterControllerRoleArn = ocds["karpenter-controller-role"].Resource.status.atProvider.arn
+            if "cilium-operator-role" in ocds and ocds["cilium-operator-role"].Resource?.status?.atProvider?.arn:
+                _dxr.status.references.ciliumOperatorRoleArn = ocds["cilium-operator-role"].Resource.status.atProvider.arn
+            if "ec2-node-role" in ocds and ocds["ec2-node-role"].Resource?.status?.atProvider?.arn:
+                _dxr.status.references.ec2NodeRoleArn = ocds["ec2-node-role"].Resource.status.atProvider.arn
+            if "interruption-queue" in ocds and ocds["interruption-queue"].Resource?.status?.atProvider?.arn:
+                _dxr.status.references.interruptionQueueArn = ocds["interruption-queue"].Resource.status.atProvider.arn
+
+            infrastructure_condition = {
+                type = "InfrastructureReady"
+                status = "True" if infrastructure_ready else "False"
+                reason = "Available" if infrastructure_ready else ("WaitingForEKSAPI" if not _cluster_api_ready else ("WaitingForFargate" if not _fargate_ready else "WaitingForIdentityAndInterruptionInfrastructure"))
+                message = "EKS API, identities, Fargate bootstrap, and interruption infrastructure are ready; CoreDNS readiness is evaluated separately." if infrastructure_ready else "Waiting for the EKS API, identity, Fargate, access, or interruption resources; CoreDNS Pending does not block this condition."
+            }
+            conditions = {
+                apiVersion = "meta.krm.kcl.dev/v1alpha1"
+                kind = "Conditions"
+                conditions = [
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = infrastructure_condition
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "RemoteConnectionMaterialReady"
+                            status = "True" if _connection_material_ready else "False"
+                            reason = "Available" if _connection_material_ready else "WaitingForEKSAPI"
+                            message = "A token-free kubeconfig containing only the observed cluster endpoint, CA, and cluster name is available to the foundation." if _connection_material_ready else "Waiting for an ACTIVE EKS API endpoint and certificate authority; no static bearer token is generated."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "AccountPrerequisitesReady"
+                            status = "Unknown"
+                            reason = "RequiresAccountOwnerVerification"
+                            message = "Account-level Spot/EKS/Fargate service-linked roles, provider credentials, AWS managed policies, quotas, and Git credentials remain external prerequisites."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "RuntimeNetworkUAT"
+                            status = "Unknown"
+                            reason = "RequiresAWSUAT"
+                            message = "Static composition readiness never substitutes for real Fargate-to-EC2, DNS, Service, webhook, and network-policy UAT."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "NativeDeletionProtectionDisabled"
+                            status = "True" if native_deletion_protection_disabled else "False"
+                            reason = "ObservedDisabled" if native_deletion_protection_disabled else ("UpdatePending" if params.lifecycle.deletionProtection == False else "Protected")
+                            message = "The AWS provider observed deletionProtection=false on a Ready EKS control plane." if native_deletion_protection_disabled else ("Waiting for the AWS provider to observe deletionProtection=false; root protection must remain." if params.lifecycle.deletionProtection == False else "Native EKS deletion protection remains enabled.")
+                        }
+                    },
+                ]
+            }
+
+            items = static_resources + oidc_resources + irsa_resources + usages + [conditions, _dxr]
+    - step: automatically-detect-ready-cluster-resources
+      functionRef:
+        name: function-auto-ready

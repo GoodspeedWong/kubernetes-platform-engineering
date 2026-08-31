@@ -1,0 +1,44 @@
+eks-control-plane:
+  Resource:
+    apiVersion: eks.aws.m.upbound.io/v1beta1
+    kind: Cluster
+    metadata:
+      namespace: crossplane-system
+      annotations:
+        krm.kcl.dev/composition-resource-name: eks-control-plane
+      labels:
+        platform.aws.goodnotes.io/resource-role: eks-control-plane
+    status:
+      atProvider:
+        certificateAuthority:
+          - data: VEVTVC1PTkxZLUNB
+        endpoint: https://test-only.eks.invalid
+        identity:
+          - oidc:
+              - issuer: https://oidc.eks.test-only.invalid/id/EXAMPLE
+        status: ACTIVE
+        version: "1.35"
+      conditions:
+        - type: Ready
+          status: "True"
+eks-oidc-provider:
+  Resource:
+    apiVersion: iam.aws.m.upbound.io/v1beta1
+    kind: OpenIDConnectProvider
+    metadata:
+      namespace: crossplane-system
+      annotations:
+        krm.kcl.dev/composition-resource-name: eks-oidc-provider
+      labels:
+        platform.aws.goodnotes.io/resource-role: eks-oidc-provider
+    spec:
+      forProvider:
+        clientIdList:
+          - sts.amazonaws.com
+        url: https://oidc.eks.test-only.invalid/id/EXAMPLE
+    status:
+      atProvider:
+        arn: arn:aws:iam::000000000000:oidc-provider/oidc.eks.test-only.invalid/id/EXAMPLE
+      conditions:
+        - type: Ready
+          status: "True"

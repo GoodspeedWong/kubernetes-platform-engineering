@@ -1,0 +1,25 @@
+apiVersion: platform.aws.goodnotes.io/v1alpha1
+kind: XNetwork
+metadata:
+  name: shared-dev-network
+spec:
+  parameters:
+    cidrBlock: 10.40.0.0/16
+    networkClass: shared
+    privateSubnets:
+      a:
+        availabilityZone: ap-southeast-1a
+        cidrBlock: 10.40.10.0/24
+      b:
+        availabilityZone: ap-southeast-1b
+        cidrBlock: 10.40.11.0/24
+    providerConfigRef:
+      name: default
+    publicSubnets:
+      a:
+        availabilityZone: ap-southeast-1a
+        cidrBlock: 10.40.0.0/24
+      b:
+        availabilityZone: ap-southeast-1b
+        cidrBlock: 10.40.1.0/24
+    region: ap-southeast-1

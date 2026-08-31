@@ -1,0 +1,35 @@
+apiVersion: platform.aws.goodnotes.io/v1alpha1
+kind: LegacyCompositionIdentity
+metadata:
+  name: xnetwork-pre-p3-baseline
+spec:
+  externalNameAnnotation: absent
+  awsManagedResources:
+    - name: vpc
+      kind: VPC
+    - name: internet-gateway
+      kind: InternetGateway
+    - name: public-route-table
+      kind: RouteTable
+    - name: private-route-table
+      kind: RouteTable
+    - name: public-default-route
+      kind: Route
+    - name: public-subnet-a
+      kind: Subnet
+    - name: public-subnet-b
+      kind: Subnet
+    - name: private-subnet-a
+      kind: Subnet
+    - name: private-subnet-b
+      kind: Subnet
+    - name: public-subnet-a-association
+      kind: RouteTableAssociation
+    - name: public-subnet-b-association
+      kind: RouteTableAssociation
+    - name: private-subnet-a-association
+      kind: RouteTableAssociation
+    - name: private-subnet-b-association
+      kind: RouteTableAssociation
+  managedResourceNamespace: crossplane-system
+  providerConfigName: default

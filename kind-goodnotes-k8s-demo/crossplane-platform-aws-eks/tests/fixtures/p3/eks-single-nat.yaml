@@ -1,0 +1,34 @@
+apiVersion: platform.aws.goodnotes.io/v1alpha1
+kind: XNetwork
+metadata:
+  name: eks-dev-spot-network
+spec:
+  crossplane:
+    compositionUpdatePolicy: Manual
+  parameters:
+    cidrBlock: 10.50.0.0/16
+    deletionPolicy: Delete
+    egress:
+      mode: SingleNAT
+    environmentRef:
+      kind: XEKSEnvironment
+      name: eks-dev-spot
+    networkClass: application
+    privateSubnets:
+      a:
+        availabilityZone: us-east-1a
+        cidrBlock: 10.50.10.0/24
+      b:
+        availabilityZone: us-east-1b
+        cidrBlock: 10.50.11.0/24
+    providerConfigRef:
+      kind: ClusterProviderConfig
+      name: default
+    publicSubnets:
+      a:
+        availabilityZone: us-east-1a
+        cidrBlock: 10.50.0.0/24
+      b:
+        availabilityZone: us-east-1b
+        cidrBlock: 10.50.1.0/24
+    region: us-east-1

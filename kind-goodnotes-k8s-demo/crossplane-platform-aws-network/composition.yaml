@@ -9,778 +9,841 @@ spec:
   compositeTypeRef:
     apiVersion: platform.aws.goodnotes.io/v1alpha1
     kind: XNetwork
-  resources:
-    - name: vpc
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: VPC
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: vpc
+  mode: Pipeline
+  pipeline:
+    - step: render-network-topology
+      functionRef:
+        name: function-kcl
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLInput
         spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            assignGeneratedIpv6CidrBlock: false
-            cidrBlock: 10.0.0.0/16
-            enableDnsHostnames: true
-            enableDnsSupport: true
-            region: us-west-2
-            tags:
-              Name: replace-me
-              managed-by: crossplane
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "%s-vpc"
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.networkClass
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network-class"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.networkClass
-          toFieldPath: spec.forProvider.tags["network-class"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.cidrBlock
-          toFieldPath: spec.forProvider.cidrBlock
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.arn
-          toFieldPath: status.vpcArn
-          policy:
-            fromFieldPath: Optional
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.id
-          toFieldPath: status.vpcId
-          policy:
-            fromFieldPath: Optional
-    - name: internet-gateway
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: InternetGateway
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: internet-gateway
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            region: us-west-2
-            tags:
-              Name: replace-me
-              managed-by: crossplane
-            vpcIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: vpc
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "%s-igw"
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.vpcIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.id
-          toFieldPath: status.internetGatewayId
-          policy:
-            fromFieldPath: Optional
-    - name: public-route-table
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: RouteTable
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: route-table
-            platform.aws.goodnotes.io/route-table-scope: public
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            region: us-west-2
-            tags:
-              Name: replace-me
-              managed-by: crossplane
-            vpcIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: vpc
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "%s-public-rt"
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.vpcIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.id
-          toFieldPath: status.publicRouteTableId
-          policy:
-            fromFieldPath: Optional
-    - name: private-route-table
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: RouteTable
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: route-table
-            platform.aws.goodnotes.io/route-table-scope: private
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            region: us-west-2
-            tags:
-              Name: replace-me
-              managed-by: crossplane
-            vpcIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: vpc
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "%s-private-rt"
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.vpcIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.id
-          toFieldPath: status.privateRouteTableId
-          policy:
-            fromFieldPath: Optional
-    - name: public-default-route
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: Route
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: route
-            platform.aws.goodnotes.io/route-scope: public-egress
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            destinationCidrBlock: 0.0.0.0/0
-            gatewayIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: internet-gateway
-            region: us-west-2
-            routeTableIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: route-table
-                platform.aws.goodnotes.io/route-table-scope: public
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.gatewayIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-    - name: public-subnet-a
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: Subnet
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: subnet
-            platform.aws.goodnotes.io/subnet-slot: a
-            platform.aws.goodnotes.io/subnet-visibility: public
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            availabilityZone: us-west-2a
-            cidrBlock: 10.0.0.0/24
-            mapPublicIpOnLaunch: true
-            region: us-west-2
-            tags:
-              Name: replace-me
-              managed-by: crossplane
-            vpcIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: vpc
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.networkClass
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network-class"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.publicSubnets.a.availabilityZone
-          toFieldPath: spec.forProvider.availabilityZone
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.publicSubnets.a.cidrBlock
-          toFieldPath: spec.forProvider.cidrBlock
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.vpcIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "%s-public-a"
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.networkClass
-          toFieldPath: spec.forProvider.tags["network-class"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.id
-          toFieldPath: status.publicSubnetIds.a
-          policy:
-            fromFieldPath: Optional
-    - name: public-subnet-b
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: Subnet
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: subnet
-            platform.aws.goodnotes.io/subnet-slot: b
-            platform.aws.goodnotes.io/subnet-visibility: public
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            availabilityZone: us-west-2b
-            cidrBlock: 10.0.1.0/24
-            mapPublicIpOnLaunch: true
-            region: us-west-2
-            tags:
-              Name: replace-me
-              managed-by: crossplane
-            vpcIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: vpc
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.networkClass
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network-class"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.publicSubnets.b.availabilityZone
-          toFieldPath: spec.forProvider.availabilityZone
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.publicSubnets.b.cidrBlock
-          toFieldPath: spec.forProvider.cidrBlock
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.vpcIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "%s-public-b"
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.networkClass
-          toFieldPath: spec.forProvider.tags["network-class"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.id
-          toFieldPath: status.publicSubnetIds.b
-          policy:
-            fromFieldPath: Optional
-    - name: private-subnet-a
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: Subnet
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: subnet
-            platform.aws.goodnotes.io/subnet-slot: a
-            platform.aws.goodnotes.io/subnet-visibility: private
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            availabilityZone: us-west-2a
-            cidrBlock: 10.0.10.0/24
-            mapPublicIpOnLaunch: false
-            region: us-west-2
-            tags:
-              Name: replace-me
-              managed-by: crossplane
-            vpcIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: vpc
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.networkClass
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network-class"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.privateSubnets.a.availabilityZone
-          toFieldPath: spec.forProvider.availabilityZone
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.privateSubnets.a.cidrBlock
-          toFieldPath: spec.forProvider.cidrBlock
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.vpcIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "%s-private-a"
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.networkClass
-          toFieldPath: spec.forProvider.tags["network-class"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.id
-          toFieldPath: status.privateSubnetIds.a
-          policy:
-            fromFieldPath: Optional
-    - name: private-subnet-b
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: Subnet
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: subnet
-            platform.aws.goodnotes.io/subnet-slot: b
-            platform.aws.goodnotes.io/subnet-visibility: private
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            availabilityZone: us-west-2b
-            cidrBlock: 10.0.11.0/24
-            mapPublicIpOnLaunch: false
-            region: us-west-2
-            tags:
-              Name: replace-me
-              managed-by: crossplane
-            vpcIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: vpc
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.networkClass
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network-class"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.privateSubnets.b.availabilityZone
-          toFieldPath: spec.forProvider.availabilityZone
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.privateSubnets.b.cidrBlock
-          toFieldPath: spec.forProvider.cidrBlock
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.vpcIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "%s-private-b"
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.networkClass
-          toFieldPath: spec.forProvider.tags["network-class"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.id
-          toFieldPath: status.privateSubnetIds.b
-          policy:
-            fromFieldPath: Optional
-    - name: public-subnet-a-association
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: RouteTableAssociation
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: route-table-association
-            platform.aws.goodnotes.io/subnet-slot: a
-            platform.aws.goodnotes.io/subnet-visibility: public
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            region: us-west-2
-            routeTableIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: route-table
-                platform.aws.goodnotes.io/route-table-scope: public
-            subnetIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: subnet
-                platform.aws.goodnotes.io/subnet-slot: a
-                platform.aws.goodnotes.io/subnet-visibility: public
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-    - name: public-subnet-b-association
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: RouteTableAssociation
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: route-table-association
-            platform.aws.goodnotes.io/subnet-slot: b
-            platform.aws.goodnotes.io/subnet-visibility: public
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            region: us-west-2
-            routeTableIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: route-table
-                platform.aws.goodnotes.io/route-table-scope: public
-            subnetIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: subnet
-                platform.aws.goodnotes.io/subnet-slot: b
-                platform.aws.goodnotes.io/subnet-visibility: public
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-    - name: private-subnet-a-association
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: RouteTableAssociation
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: route-table-association
-            platform.aws.goodnotes.io/subnet-slot: a
-            platform.aws.goodnotes.io/subnet-visibility: private
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            region: us-west-2
-            routeTableIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: route-table
-                platform.aws.goodnotes.io/route-table-scope: private
-            subnetIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: subnet
-                platform.aws.goodnotes.io/subnet-slot: a
-                platform.aws.goodnotes.io/subnet-visibility: private
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
-    - name: private-subnet-b-association
-      base:
-        apiVersion: ec2.aws.m.upbound.io/v1beta1
-        kind: RouteTableAssociation
-        metadata:
-          namespace: crossplane-system
-          labels:
-            platform.aws.goodnotes.io/managed-by: crossplane
-            platform.aws.goodnotes.io/resource-role: route-table-association
-            platform.aws.goodnotes.io/subnet-slot: b
-            platform.aws.goodnotes.io/subnet-visibility: private
-        spec:
-          deletionPolicy: Delete
-          providerConfigRef:
-            name: default
-          forProvider:
-            region: us-west-2
-            routeTableIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: route-table
-                platform.aws.goodnotes.io/route-table-scope: private
-            subnetIdSelector:
-              matchLabels:
-                platform.aws.goodnotes.io/network: replace-me
-                platform.aws.goodnotes.io/resource-role: subnet
-                platform.aws.goodnotes.io/subnet-slot: b
-                platform.aws.goodnotes.io/subnet-visibility: private
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: metadata.labels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels["platform.aws.goodnotes.io/network"]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
-          policy:
-            fromFieldPath: Optional
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.providerConfigRef.name
-          toFieldPath: spec.providerConfigRef.name
-          policy:
-            fromFieldPath: Optional
+          source: |
+            oxr = option("params").oxr
+            ocds = option("params").ocds
+            _dxr = option("params").dxr
+            params = oxr.spec.parameters
+
+            network_name = oxr.metadata.name
+            namespace = "crossplane-system"
+            ec2_api = "ec2.aws.m.upbound.io/v1beta1"
+            usage_api = "protection.crossplane.io/v1beta1"
+            deletion_policy = params.deletionPolicy or "Delete"
+            management_policies = ["*"] if deletion_policy == "Delete" else ["Observe", "Create", "Update", "LateInitialize"]
+            provider_config = {
+                kind = params.providerConfigRef?.kind or "ClusterProviderConfig"
+                name = params.providerConfigRef?.name or "default"
+            }
+            egress_mode = params.egress?.mode or "None"
+            environment_name = params.environmentRef?.name or ""
+            dedicated_environment = environment_name != ""
+            cluster_name = environment_name + "-cluster" if dedicated_environment else ""
+
+            owner_labels = {
+                "platform.aws.goodnotes.io/managed-by" = "crossplane"
+                "platform.aws.goodnotes.io/network" = network_name
+            }
+            environment_labels = {
+                "platform.aws.goodnotes.io/environment" = environment_name
+            } if dedicated_environment else {}
+            environment_tags = {
+                "platform.aws.goodnotes.io/environment" = environment_name
+            } if dedicated_environment else {}
+            cluster_membership_tags = {
+                key: "shared" for key in ["kubernetes.io/cluster/" + cluster_name]
+            } if dedicated_environment else {}
+            private_discovery_tags = {
+                **environment_tags
+                **cluster_membership_tags
+                "karpenter.sh/discovery" = environment_name
+                "platform.aws.goodnotes.io/subnet-visibility" = "private"
+            } if dedicated_environment else {}
+            public_discovery_tags = {
+                **environment_tags
+                **cluster_membership_tags
+                "platform.aws.goodnotes.io/subnet-visibility" = "public"
+            } if dedicated_environment else {}
+
+            managed_spec = {
+                managementPolicies = management_policies
+                providerConfigRef = provider_config
+            }
+            vpc_selector = {
+                matchControllerRef = True
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "vpc"
+                }
+                namespace = namespace
+            }
+            internet_gateway_selector = {
+                matchControllerRef = True
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "internet-gateway"
+                }
+                namespace = namespace
+            }
+            public_route_table_selector = {
+                matchControllerRef = True
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "route-table"
+                    "platform.aws.goodnotes.io/route-table-scope" = "public"
+                }
+                namespace = namespace
+            }
+            private_route_table_selector = {
+                matchControllerRef = True
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "route-table"
+                    "platform.aws.goodnotes.io/route-table-scope" = "private"
+                }
+                namespace = namespace
+            }
+
+            vpc = {
+                apiVersion = ec2_api
+                kind = "VPC"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "vpc"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/network-class" = params.networkClass
+                        "platform.aws.goodnotes.io/resource-role" = "vpc"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        assignGeneratedIpv6CidrBlock = False
+                        cidrBlock = params.cidrBlock
+                        enableDnsHostnames = True
+                        enableDnsSupport = True
+                        region = params.region
+                        tags = {
+                            **environment_tags
+                            Name = network_name + "-vpc"
+                            "managed-by" = "crossplane"
+                            "network-class" = params.networkClass
+                        }
+                    }
+                }
+            }
+
+            internet_gateway = {
+                apiVersion = ec2_api
+                kind = "InternetGateway"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "internet-gateway"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "internet-gateway"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        region = params.region
+                        tags = {
+                            **environment_tags
+                            Name = network_name + "-igw"
+                            "managed-by" = "crossplane"
+                        }
+                        vpcIdSelector = vpc_selector
+                    }
+                }
+            }
+
+            public_route_table = {
+                apiVersion = ec2_api
+                kind = "RouteTable"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "public-route-table"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "route-table"
+                        "platform.aws.goodnotes.io/route-table-scope" = "public"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        region = params.region
+                        tags = {
+                            **environment_tags
+                            Name = network_name + "-public-rt"
+                            "managed-by" = "crossplane"
+                        }
+                        vpcIdSelector = vpc_selector
+                    }
+                }
+            }
+
+            private_route_table = {
+                apiVersion = ec2_api
+                kind = "RouteTable"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "private-route-table"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "route-table"
+                        "platform.aws.goodnotes.io/route-table-scope" = "private"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        region = params.region
+                        tags = {
+                            **environment_tags
+                            Name = network_name + "-private-rt"
+                            "managed-by" = "crossplane"
+                        }
+                        vpcIdSelector = vpc_selector
+                    }
+                }
+            }
+
+            public_default_route = {
+                apiVersion = ec2_api
+                kind = "Route"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "public-default-route"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "route"
+                        "platform.aws.goodnotes.io/route-scope" = "public-egress"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        destinationCidrBlock = "0.0.0.0/0"
+                        gatewayIdSelector = internet_gateway_selector
+                        region = params.region
+                        routeTableIdSelector = public_route_table_selector
+                    }
+                }
+            }
+
+            public_subnet_a_selector = {
+                matchControllerRef = True
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "subnet"
+                    "platform.aws.goodnotes.io/subnet-slot" = "a"
+                    "platform.aws.goodnotes.io/subnet-visibility" = "public"
+                }
+                namespace = namespace
+            }
+            public_subnet_b_selector = {
+                matchControllerRef = True
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "subnet"
+                    "platform.aws.goodnotes.io/subnet-slot" = "b"
+                    "platform.aws.goodnotes.io/subnet-visibility" = "public"
+                }
+                namespace = namespace
+            }
+            private_subnet_a_selector = {
+                matchControllerRef = True
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "subnet"
+                    "platform.aws.goodnotes.io/subnet-slot" = "a"
+                    "platform.aws.goodnotes.io/subnet-visibility" = "private"
+                }
+                namespace = namespace
+            }
+            private_subnet_b_selector = {
+                matchControllerRef = True
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "subnet"
+                    "platform.aws.goodnotes.io/subnet-slot" = "b"
+                    "platform.aws.goodnotes.io/subnet-visibility" = "private"
+                }
+                namespace = namespace
+            }
+
+            public_subnet_a = {
+                apiVersion = ec2_api
+                kind = "Subnet"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "public-subnet-a"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/network-class" = params.networkClass
+                        "platform.aws.goodnotes.io/resource-role" = "subnet"
+                        "platform.aws.goodnotes.io/subnet-slot" = "a"
+                        "platform.aws.goodnotes.io/subnet-visibility" = "public"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        availabilityZone = params.publicSubnets.a.availabilityZone
+                        cidrBlock = params.publicSubnets.a.cidrBlock
+                        mapPublicIpOnLaunch = True
+                        region = params.region
+                        tags = {
+                            **public_discovery_tags
+                            Name = network_name + "-public-a"
+                            "managed-by" = "crossplane"
+                            "network-class" = params.networkClass
+                        }
+                        vpcIdSelector = vpc_selector
+                    }
+                }
+            }
+
+            public_subnet_b = {
+                apiVersion = ec2_api
+                kind = "Subnet"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "public-subnet-b"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/network-class" = params.networkClass
+                        "platform.aws.goodnotes.io/resource-role" = "subnet"
+                        "platform.aws.goodnotes.io/subnet-slot" = "b"
+                        "platform.aws.goodnotes.io/subnet-visibility" = "public"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        availabilityZone = params.publicSubnets.b.availabilityZone
+                        cidrBlock = params.publicSubnets.b.cidrBlock
+                        mapPublicIpOnLaunch = True
+                        region = params.region
+                        tags = {
+                            **public_discovery_tags
+                            Name = network_name + "-public-b"
+                            "managed-by" = "crossplane"
+                            "network-class" = params.networkClass
+                        }
+                        vpcIdSelector = vpc_selector
+                    }
+                }
+            }
+
+            private_subnet_a = {
+                apiVersion = ec2_api
+                kind = "Subnet"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "private-subnet-a"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/network-class" = params.networkClass
+                        "platform.aws.goodnotes.io/resource-role" = "subnet"
+                        "platform.aws.goodnotes.io/subnet-slot" = "a"
+                        "platform.aws.goodnotes.io/subnet-visibility" = "private"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        availabilityZone = params.privateSubnets.a.availabilityZone
+                        cidrBlock = params.privateSubnets.a.cidrBlock
+                        mapPublicIpOnLaunch = False
+                        region = params.region
+                        tags = {
+                            **private_discovery_tags
+                            Name = network_name + "-private-a"
+                            "managed-by" = "crossplane"
+                            "network-class" = params.networkClass
+                        }
+                        vpcIdSelector = vpc_selector
+                    }
+                }
+            }
+
+            private_subnet_b = {
+                apiVersion = ec2_api
+                kind = "Subnet"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "private-subnet-b"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/network-class" = params.networkClass
+                        "platform.aws.goodnotes.io/resource-role" = "subnet"
+                        "platform.aws.goodnotes.io/subnet-slot" = "b"
+                        "platform.aws.goodnotes.io/subnet-visibility" = "private"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        availabilityZone = params.privateSubnets.b.availabilityZone
+                        cidrBlock = params.privateSubnets.b.cidrBlock
+                        mapPublicIpOnLaunch = False
+                        region = params.region
+                        tags = {
+                            **private_discovery_tags
+                            Name = network_name + "-private-b"
+                            "managed-by" = "crossplane"
+                            "network-class" = params.networkClass
+                        }
+                        vpcIdSelector = vpc_selector
+                    }
+                }
+            }
+
+            public_subnet_a_association = {
+                apiVersion = ec2_api
+                kind = "RouteTableAssociation"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "public-subnet-a-association"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "route-table-association"
+                        "platform.aws.goodnotes.io/subnet-slot" = "a"
+                        "platform.aws.goodnotes.io/subnet-visibility" = "public"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        region = params.region
+                        routeTableIdSelector = public_route_table_selector
+                        subnetIdSelector = public_subnet_a_selector
+                    }
+                }
+            }
+
+            public_subnet_b_association = {
+                apiVersion = ec2_api
+                kind = "RouteTableAssociation"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "public-subnet-b-association"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "route-table-association"
+                        "platform.aws.goodnotes.io/subnet-slot" = "b"
+                        "platform.aws.goodnotes.io/subnet-visibility" = "public"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        region = params.region
+                        routeTableIdSelector = public_route_table_selector
+                        subnetIdSelector = public_subnet_b_selector
+                    }
+                }
+            }
+
+            private_subnet_a_association = {
+                apiVersion = ec2_api
+                kind = "RouteTableAssociation"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "private-subnet-a-association"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "route-table-association"
+                        "platform.aws.goodnotes.io/subnet-slot" = "a"
+                        "platform.aws.goodnotes.io/subnet-visibility" = "private"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        region = params.region
+                        routeTableIdSelector = private_route_table_selector
+                        subnetIdSelector = private_subnet_a_selector
+                    }
+                }
+            }
+
+            private_subnet_b_association = {
+                apiVersion = ec2_api
+                kind = "RouteTableAssociation"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "private-subnet-b-association"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "route-table-association"
+                        "platform.aws.goodnotes.io/subnet-slot" = "b"
+                        "platform.aws.goodnotes.io/subnet-visibility" = "private"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        region = params.region
+                        routeTableIdSelector = private_route_table_selector
+                        subnetIdSelector = private_subnet_b_selector
+                    }
+                }
+            }
+
+            nat_eip_selector = {
+                matchControllerRef = True
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "nat-eip"
+                }
+                namespace = namespace
+            }
+            nat_gateway_selector = {
+                matchControllerRef = True
+                matchLabels = {
+                    "platform.aws.goodnotes.io/network" = network_name
+                    "platform.aws.goodnotes.io/resource-role" = "nat-gateway"
+                }
+                namespace = namespace
+            }
+            nat_eip = {
+                apiVersion = ec2_api
+                kind = "EIP"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "nat-eip"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "nat-eip"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        domain = "vpc"
+                        region = params.region
+                        tags = {
+                            **environment_tags
+                            Name = network_name + "-nat-eip"
+                            "managed-by" = "crossplane"
+                        }
+                    }
+                }
+            }
+            nat_gateway = {
+                apiVersion = ec2_api
+                kind = "NATGateway"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "nat-gateway"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "nat-gateway"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        allocationIdSelector = nat_eip_selector
+                        connectivityType = "public"
+                        region = params.region
+                        subnetIdSelector = public_subnet_a_selector
+                        tags = {
+                            **environment_tags
+                            Name = network_name + "-nat"
+                            "managed-by" = "crossplane"
+                        }
+                    }
+                }
+            }
+            private_default_route = {
+                apiVersion = ec2_api
+                kind = "Route"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "private-default-route"
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "route"
+                        "platform.aws.goodnotes.io/route-scope" = "private-egress"
+                    }
+                }
+                spec = {
+                    **managed_spec
+                    forProvider = {
+                        destinationCidrBlock = "0.0.0.0/0"
+                        natGatewayIdSelector = nat_gateway_selector
+                        region = params.region
+                        routeTableIdSelector = private_route_table_selector
+                    }
+                }
+            }
+
+            base_resources = [
+                vpc,
+                internet_gateway,
+                public_route_table,
+                private_route_table,
+                public_default_route,
+                public_subnet_a,
+                public_subnet_b,
+                private_subnet_a,
+                private_subnet_b,
+                public_subnet_a_association,
+                public_subnet_b_association,
+                private_subnet_a_association,
+                private_subnet_b_association,
+            ]
+            nat_resources = [nat_eip, nat_gateway, private_default_route] if egress_mode == "SingleNAT" else []
+
+            usage_edges = [
+                {
+                    name = "usage-internet-gateway-vpc"
+                    by = {apiVersion = ec2_api, kind = "InternetGateway", labels = internet_gateway.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "VPC", labels = vpc.metadata.labels}
+                },
+                {
+                    name = "usage-public-route-table-vpc"
+                    by = {apiVersion = ec2_api, kind = "RouteTable", labels = public_route_table.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "VPC", labels = vpc.metadata.labels}
+                },
+                {
+                    name = "usage-private-route-table-vpc"
+                    by = {apiVersion = ec2_api, kind = "RouteTable", labels = private_route_table.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "VPC", labels = vpc.metadata.labels}
+                },
+                {
+                    name = "usage-public-subnet-a-vpc"
+                    by = {apiVersion = ec2_api, kind = "Subnet", labels = public_subnet_a.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "VPC", labels = vpc.metadata.labels}
+                },
+                {
+                    name = "usage-public-subnet-b-vpc"
+                    by = {apiVersion = ec2_api, kind = "Subnet", labels = public_subnet_b.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "VPC", labels = vpc.metadata.labels}
+                },
+                {
+                    name = "usage-private-subnet-a-vpc"
+                    by = {apiVersion = ec2_api, kind = "Subnet", labels = private_subnet_a.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "VPC", labels = vpc.metadata.labels}
+                },
+                {
+                    name = "usage-private-subnet-b-vpc"
+                    by = {apiVersion = ec2_api, kind = "Subnet", labels = private_subnet_b.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "VPC", labels = vpc.metadata.labels}
+                },
+                {
+                    name = "usage-public-route-internet-gateway"
+                    by = {apiVersion = ec2_api, kind = "Route", labels = public_default_route.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "InternetGateway", labels = internet_gateway.metadata.labels}
+                },
+                {
+                    name = "usage-public-route-route-table"
+                    by = {apiVersion = ec2_api, kind = "Route", labels = public_default_route.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "RouteTable", labels = public_route_table.metadata.labels}
+                },
+                {
+                    name = "usage-public-association-a-route-table"
+                    by = {apiVersion = ec2_api, kind = "RouteTableAssociation", labels = public_subnet_a_association.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "RouteTable", labels = public_route_table.metadata.labels}
+                },
+                {
+                    name = "usage-public-association-b-route-table"
+                    by = {apiVersion = ec2_api, kind = "RouteTableAssociation", labels = public_subnet_b_association.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "RouteTable", labels = public_route_table.metadata.labels}
+                },
+                {
+                    name = "usage-private-association-a-route-table"
+                    by = {apiVersion = ec2_api, kind = "RouteTableAssociation", labels = private_subnet_a_association.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "RouteTable", labels = private_route_table.metadata.labels}
+                },
+                {
+                    name = "usage-private-association-b-route-table"
+                    by = {apiVersion = ec2_api, kind = "RouteTableAssociation", labels = private_subnet_b_association.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "RouteTable", labels = private_route_table.metadata.labels}
+                },
+                {
+                    name = "usage-public-association-a-subnet"
+                    by = {apiVersion = ec2_api, kind = "RouteTableAssociation", labels = public_subnet_a_association.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "Subnet", labels = public_subnet_a.metadata.labels}
+                },
+                {
+                    name = "usage-public-association-b-subnet"
+                    by = {apiVersion = ec2_api, kind = "RouteTableAssociation", labels = public_subnet_b_association.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "Subnet", labels = public_subnet_b.metadata.labels}
+                },
+                {
+                    name = "usage-private-association-a-subnet"
+                    by = {apiVersion = ec2_api, kind = "RouteTableAssociation", labels = private_subnet_a_association.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "Subnet", labels = private_subnet_a.metadata.labels}
+                },
+                {
+                    name = "usage-private-association-b-subnet"
+                    by = {apiVersion = ec2_api, kind = "RouteTableAssociation", labels = private_subnet_b_association.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "Subnet", labels = private_subnet_b.metadata.labels}
+                },
+            ]
+            nat_usage_edges = [
+                {
+                    name = "usage-nat-gateway-eip"
+                    by = {apiVersion = ec2_api, kind = "NATGateway", labels = nat_gateway.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "EIP", labels = nat_eip.metadata.labels}
+                },
+                {
+                    name = "usage-nat-gateway-public-subnet"
+                    by = {apiVersion = ec2_api, kind = "NATGateway", labels = nat_gateway.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "Subnet", labels = public_subnet_a.metadata.labels}
+                },
+                {
+                    name = "usage-private-route-nat-gateway"
+                    by = {apiVersion = ec2_api, kind = "Route", labels = private_default_route.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "NATGateway", labels = nat_gateway.metadata.labels}
+                },
+                {
+                    name = "usage-private-route-route-table"
+                    by = {apiVersion = ec2_api, kind = "Route", labels = private_default_route.metadata.labels}
+                    of = {apiVersion = ec2_api, kind = "RouteTable", labels = private_route_table.metadata.labels}
+                },
+            ] if egress_mode == "SingleNAT" else []
+            all_usage_edges = usage_edges + nat_usage_edges
+            usages = [{
+                apiVersion = usage_api
+                kind = "Usage"
+                metadata = {
+                    namespace = namespace
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = edge.name
+                    }
+                    labels = {
+                        **owner_labels
+                        **environment_labels
+                        "platform.aws.goodnotes.io/resource-role" = "deletion-order"
+                    }
+                }
+                spec = {
+                    replayDeletion = True
+                    by = {
+                        apiVersion = edge.by.apiVersion
+                        kind = edge.by.kind
+                        resourceSelector = {
+                            matchControllerRef = True
+                            matchLabels = edge.by.labels
+                        }
+                    }
+                    of = {
+                        apiVersion = edge.of.apiVersion
+                        kind = edge.of.kind
+                        resourceSelector = {
+                            matchControllerRef = True
+                            matchLabels = edge.of.labels
+                        }
+                    }
+                }
+            } for edge in all_usage_edges]
+
+            _dxr.status = _dxr.status or {}
+            _dxr.status.publicSubnetIds = _dxr.status?.publicSubnetIds or {}
+            _dxr.status.privateSubnetIds = _dxr.status?.privateSubnetIds or {}
+            _dxr.status.egressMode = egress_mode
+            if dedicated_environment:
+                _dxr.status.discoveryValue = environment_name
+
+            if "vpc" in ocds:
+                _observed = ocds["vpc"].Resource?.status?.atProvider
+                if _observed?.id:
+                    _dxr.status.vpcId = _observed.id
+                if _observed?.arn:
+                    _dxr.status.vpcArn = _observed.arn
+            if "internet-gateway" in ocds:
+                _observed = ocds["internet-gateway"].Resource?.status?.atProvider
+                if _observed?.id:
+                    _dxr.status.internetGatewayId = _observed.id
+            if "public-route-table" in ocds:
+                _observed = ocds["public-route-table"].Resource?.status?.atProvider
+                if _observed?.id:
+                    _dxr.status.publicRouteTableId = _observed.id
+            if "private-route-table" in ocds:
+                _observed = ocds["private-route-table"].Resource?.status?.atProvider
+                if _observed?.id:
+                    _dxr.status.privateRouteTableId = _observed.id
+            if "public-subnet-a" in ocds:
+                _observed = ocds["public-subnet-a"].Resource?.status?.atProvider
+                if _observed?.id:
+                    _dxr.status.publicSubnetIds.a = _observed.id
+            if "public-subnet-b" in ocds:
+                _observed = ocds["public-subnet-b"].Resource?.status?.atProvider
+                if _observed?.id:
+                    _dxr.status.publicSubnetIds.b = _observed.id
+            if "private-subnet-a" in ocds:
+                _observed = ocds["private-subnet-a"].Resource?.status?.atProvider
+                if _observed?.id:
+                    _dxr.status.privateSubnetIds.a = _observed.id
+            if "private-subnet-b" in ocds:
+                _observed = ocds["private-subnet-b"].Resource?.status?.atProvider
+                if _observed?.id:
+                    _dxr.status.privateSubnetIds.b = _observed.id
+            if "nat-eip" in ocds:
+                _observed = ocds["nat-eip"].Resource?.status?.atProvider
+                if _observed?.id:
+                    _dxr.status.elasticIpAllocationId = _observed.id
+            if "nat-gateway" in ocds:
+                _observed = ocds["nat-gateway"].Resource?.status?.atProvider
+                if _observed?.id:
+                    _dxr.status.natGatewayId = _observed.id
+
+            items = base_resources + nat_resources + usages + [_dxr]
+    - step: automatically-detect-ready-network-resources
+      functionRef:
+        name: function-auto-ready

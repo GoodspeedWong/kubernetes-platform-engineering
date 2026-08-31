@@ -1,4 +1,4 @@
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
   name: xnetworks.platform.aws.goodnotes.io
@@ -8,6 +8,9 @@ spec:
     kind: XNetwork
     plural: xnetworks
   scope: Cluster
+  defaultCompositionUpdatePolicy: Manual
+  enforcedCompositionRef:
+    name: xnetworks.platform.aws.goodnotes.io
   versions:
     - name: v1alpha1
       served: true
@@ -15,9 +18,14 @@ spec:
       schema:
         openAPIV3Schema:
           type: object
+          x-kubernetes-validations:
+            - rule: self.metadata.name.size() <= 63
+              message: network name must fit the labels used to preserve composed-resource identity
           properties:
             spec:
               type: object
+              required:
+                - parameters
               properties:
                 parameters:
                   type: object
@@ -27,16 +35,70 @@ spec:
                     - privateSubnets
                     - publicSubnets
                     - region
+                  x-kubernetes-validations:
+                    - rule: self.region == oldSelf.region
+                      message: region is immutable; create a new network to change it
+                    - rule: self.cidrBlock == oldSelf.cidrBlock
+                      message: VPC CIDR is immutable; create a new network to change it
+                    - rule: self.networkClass == oldSelf.networkClass
+                      message: networkClass is immutable because it is part of discovery identity
+                    - rule: self.publicSubnets == oldSelf.publicSubnets && self.privateSubnets == oldSelf.privateSubnets
+                      message: subnet topology is immutable; create a new network to change it
+                    - rule: (!has(self.providerConfigRef) && !has(oldSelf.providerConfigRef)) || (has(self.providerConfigRef) && has(oldSelf.providerConfigRef) && self.providerConfigRef == oldSelf.providerConfigRef)
+                      message: providerConfigRef is immutable because it is part of account identity
+                    - rule: (!has(self.egress) && !has(oldSelf.egress)) || (has(self.egress) && has(oldSelf.egress) && self.egress == oldSelf.egress)
+                      message: egress topology is immutable; create a new network to change it
+                    - rule: (!has(self.environmentRef) && !has(oldSelf.environmentRef)) || (has(self.environmentRef) && has(oldSelf.environmentRef) && self.environmentRef == oldSelf.environmentRef)
+                      message: environmentRef is immutable because it scopes discovery tags
+                    - rule: self.publicSubnets.a.availabilityZone.startsWith(self.region) && self.publicSubnets.b.availabilityZone.startsWith(self.region) && self.privateSubnets.a.availabilityZone.startsWith(self.region) && self.privateSubnets.b.availabilityZone.startsWith(self.region)
+                      message: every subnet availability zone must belong to the selected region
+                    - rule: '!has(self.environmentRef) || self.networkClass == ''application'''
+                      message: environment-scoped discovery is supported only for application networks
+                    - rule: '!has(self.egress) || !has(self.egress.mode) || self.egress.mode == ''None'' || has(self.environmentRef)'
+                      message: SingleNAT requires an environmentRef so discovery and cost ownership remain scoped
+                    - rule: self.publicSubnets.a.availabilityZone == self.privateSubnets.a.availabilityZone && self.publicSubnets.b.availabilityZone == self.privateSubnets.b.availabilityZone
+                      message: public and private subnet pairs must use the same two availability zones
+                    - rule: self.publicSubnets.a.cidrBlock != self.privateSubnets.a.cidrBlock && self.publicSubnets.a.cidrBlock != self.privateSubnets.b.cidrBlock && self.publicSubnets.b.cidrBlock != self.privateSubnets.a.cidrBlock && self.publicSubnets.b.cidrBlock != self.privateSubnets.b.cidrBlock
+                      message: public and private subnet CIDRs must be distinct
                   properties:
                     cidrBlock:
                       type: string
                       description: Primary IPv4 CIDR block for the owner-managed VPC.
+                      pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(1[6-9]|2[0-4])$
                     deletionPolicy:
                       type: string
                       description: Crossplane deletion policy for the managed AWS resources.
+                      default: Delete
                       enum:
                         - Delete
                         - Orphan
+                    egress:
+                      type: object
+                      description: Optional owner intent for private-subnet egress. Omission preserves the legacy no-NAT topology.
+                      properties:
+                        mode:
+                          type: string
+                          default: None
+                          enum:
+                            - None
+                            - SingleNAT
+                    environmentRef:
+                      type: object
+                      description: Optional dedicated environment reference used only to scope cloud discovery tags.
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                          default: XEKSEnvironment
+                          enum:
+                            - XEKSEnvironment
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 52
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     networkClass:
                       type: string
                       description: Intent-level classification for this network boundary.
@@ -50,6 +112,11 @@ spec:
                       required:
                         - a
                         - b
+                      x-kubernetes-validations:
+                        - rule: self.a.availabilityZone != self.b.availabilityZone
+                          message: private subnets must use two distinct availability zones
+                        - rule: self.a.cidrBlock != self.b.cidrBlock
+                          message: private subnet CIDRs must be distinct
                       properties:
                         a:
                           type: object
@@ -59,8 +126,11 @@ spec:
                           properties:
                             availabilityZone:
                               type: string
+                              minLength: 10
+                              maxLength: 36
                             cidrBlock:
                               type: string
+                              pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(2[0-8])$
                         b:
                           type: object
                           required:
@@ -69,20 +139,36 @@ spec:
                           properties:
                             availabilityZone:
                               type: string
+                              minLength: 10
+                              maxLength: 36
                             cidrBlock:
                               type: string
+                              pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(2[0-8])$
                     providerConfigRef:
                       type: object
                       description: Optional Crossplane AWS provider config override.
                       properties:
+                        kind:
+                          type: string
+                          default: ClusterProviderConfig
+                          enum:
+                            - ClusterProviderConfig
                         name:
                           type: string
+                          minLength: 1
+                          maxLength: 63
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     publicSubnets:
                       type: object
                       description: Owner-defined public subnet topology.
                       required:
                         - a
                         - b
+                      x-kubernetes-validations:
+                        - rule: self.a.availabilityZone != self.b.availabilityZone
+                          message: public subnets must use two distinct availability zones
+                        - rule: self.a.cidrBlock != self.b.cidrBlock
+                          message: public subnet CIDRs must be distinct
                       properties:
                         a:
                           type: object
@@ -92,8 +178,11 @@ spec:
                           properties:
                             availabilityZone:
                               type: string
+                              minLength: 10
+                              maxLength: 36
                             cidrBlock:
                               type: string
+                              pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(2[0-8])$
                         b:
                           type: object
                           required:
@@ -102,17 +191,29 @@ spec:
                           properties:
                             availabilityZone:
                               type: string
+                              minLength: 10
+                              maxLength: 36
                             cidrBlock:
                               type: string
+                              pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(2[0-8])$
                     region:
                       type: string
                       description: AWS region for the owner-managed VPC topology.
-              required:
-                - parameters
+                      minLength: 9
+                      maxLength: 32
+                      pattern: ^[a-z]{2}(-[a-z0-9]+)+-[0-9]+$
             status:
               type: object
               properties:
+                discoveryValue:
+                  type: string
+                egressMode:
+                  type: string
+                elasticIpAllocationId:
+                  type: string
                 internetGatewayId:
+                  type: string
+                natGatewayId:
                   type: string
                 privateRouteTableId:
                   type: string

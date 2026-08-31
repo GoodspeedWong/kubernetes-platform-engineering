@@ -1,0 +1,30 @@
+mutations:
+  - id: overlapping-subnets
+    path: spec.parameters.privateSubnets.a.cidrBlock
+    value: 10.50.0.0/24
+    expectedError: subnet CIDRs overlap
+  - id: subnet-outside-vpc
+    path: spec.parameters.privateSubnets.b.cidrBlock
+    value: 10.60.11.0/24
+    expectedError: is outside VPC
+  - id: missing-availability-zone
+    path: spec.parameters.publicSubnets.b.availabilityZone
+    delete: true
+    expectedError: must contain exactly availabilityZone and cidrBlock
+  - id: single-nat-without-owner
+    path: spec.parameters.environmentRef
+    delete: true
+    expectedError: SingleNAT requires environmentRef
+immutableMutations:
+  - id: cidr-change
+    path: spec.parameters.cidrBlock
+    value: 10.51.0.0/16
+    expectedError: immutable network topology field changed
+  - id: az-change
+    path: spec.parameters.privateSubnets.b.availabilityZone
+    value: us-east-1c
+    expectedError: immutable network topology field changed
+  - id: egress-change
+    path: spec.parameters.egress.mode
+    value: None
+    expectedError: immutable network topology field changed

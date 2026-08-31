@@ -1,0 +1,18 @@
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: test-only-node-image
+  annotations:
+    platform.aws.goodnotes.io/test-only: "true"
+spec:
+  data:
+    schemaVersion: 1
+    region: us-east-1
+    kubernetes: "1.35"
+    images:
+      amd64:
+        family: AL2023
+        release: v20260728
+        releaseVersion: 1.35.6-20260728
+        alias: al2023@v20260728
+        amiId: ami-0123456789abcdef0

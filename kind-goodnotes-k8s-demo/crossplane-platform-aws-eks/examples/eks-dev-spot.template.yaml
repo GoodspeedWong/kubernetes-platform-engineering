@@ -1,0 +1,52 @@
+apiVersion: platform.aws.goodnotes.io/v1alpha1
+kind: XEKSEnvironment
+metadata:
+  name: eks-dev-spot-template
+  annotations:
+    platform.aws.goodnotes.io/template: "true"
+    platform.aws.goodnotes.io/do-not-apply: "true"
+spec:
+  crossplane:
+    compositionUpdatePolicy: Manual
+  parameters:
+    class: dev
+    region: __REPLACE_AWS_REGION__
+    providerConfigRef:
+      kind: ClusterProviderConfig
+      name: __REPLACE_AWS_PROVIDER_CONFIG__
+    kubernetesVersion: "1.35"
+    platformReleaseRef:
+      kind: EnvironmentConfig
+      name: __REPLACE_PLATFORM_RELEASE_CONFIG__
+    nodeImageRef:
+      kind: EnvironmentConfig
+      name: __REPLACE_NODE_IMAGE_CONFIG__
+    network:
+      cidrBlock: __REPLACE_VPC_CIDR__
+      publicSubnets:
+        a:
+          availabilityZone: __REPLACE_AZ_A__
+          cidrBlock: __REPLACE_PUBLIC_SUBNET_A_CIDR__
+        b:
+          availabilityZone: __REPLACE_AZ_B__
+          cidrBlock: __REPLACE_PUBLIC_SUBNET_B_CIDR__
+      privateSubnets:
+        a:
+          availabilityZone: __REPLACE_AZ_A__
+          cidrBlock: __REPLACE_PRIVATE_SUBNET_A_CIDR__
+        b:
+          availabilityZone: __REPLACE_AZ_B__
+          cidrBlock: __REPLACE_PRIVATE_SUBNET_B_CIDR__
+    compute:
+      class: spot-general
+      limits:
+        cpu: "16"
+        memory: 64Gi
+    access:
+      adminPrincipalArn: __REPLACE_EKS_ADMIN_ROLE_ARN__
+      deploymentPrincipalArn: __REPLACE_EKS_DEPLOYMENT_ROLE_ARN__
+      publicAccessCidrs:
+        - __REPLACE_MANAGEMENT_EGRESS_CIDR__
+    lifecycle:
+      retirementStage: Active
+      deletionProtection: true

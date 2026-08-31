@@ -1,0 +1,458 @@
+schemaVersion: 1
+managementNamespace: crossplane-system
+rules:
+  sharedUsageAllowed: true
+  sharedLifecycleOwnershipAllowed: false
+  missingObservedState: preserve-desired-and-report-not-ready
+  providerConfigReference:
+    kind: ClusterProviderConfig
+    fields:
+      - kind
+      - name
+aggregate:
+  owner: XEKSEnvironment
+  stableCompositionResourceNames:
+    - network
+    - cluster
+    - foundation
+  rootProtection:
+    compositionResourceName: root-deletion-protection
+    kind: ClusterUsage
+    by: XClusterFoundation
+    of: XEKSEnvironment
+    replayDeletion: false
+  children:
+    - kind: XNetwork
+      suffix: -network
+      owner: XEKSEnvironment
+    - kind: XEKSCluster
+      suffix: -cluster
+      owner: XEKSEnvironment
+    - kind: XClusterFoundation
+      suffix: -foundation
+      owner: XEKSEnvironment
+networkContract:
+  owner: XNetwork
+  managementNamespace: crossplane-system
+  legacyExternalNameAnnotation: omitted
+  legacyAwsCompositionResourceNames:
+    - vpc
+    - internet-gateway
+    - public-route-table
+    - private-route-table
+    - public-default-route
+    - public-subnet-a
+    - public-subnet-b
+    - private-subnet-a
+    - private-subnet-b
+    - public-subnet-a-association
+    - public-subnet-b-association
+    - private-subnet-a-association
+    - private-subnet-b-association
+  singleNatAdditionalResourceNames:
+    - nat-eip
+    - nat-gateway
+    - private-default-route
+  deletionPolicyMapping:
+    Delete:
+      managementPolicies:
+        - '*'
+    Orphan:
+      managementPolicies:
+        - Observe
+        - Create
+        - Update
+        - LateInitialize
+  discovery:
+    scopeValue: environmentRef.name
+    privateSubnetAwsTags:
+      - karpenter.sh/discovery
+      - kubernetes.io/cluster/<environment>-cluster
+      - platform.aws.goodnotes.io/environment
+      - platform.aws.goodnotes.io/subnet-visibility
+    publicSubnetAwsTags:
+      - kubernetes.io/cluster/<environment>-cluster
+      - platform.aws.goodnotes.io/environment
+      - platform.aws.goodnotes.io/subnet-visibility
+    sharedNetworkDiscoveryTagsAllowed: false
+    securityGroupOwner: XEKSCluster
+    securityGroupImplementationPhase: P4
+    securityGroupAwsTags:
+      - karpenter.sh/discovery
+      - kubernetes.io/cluster/<environment>-cluster
+      - platform.aws.goodnotes.io/environment
+  usageGraph:
+    legacyEdges: 17
+    singleNatEdges: 21
+    matchControllerRef: true
+    replayDeletion: true
+    acyclic: true
+plannedCompositionResourceNames:
+  XEKSCluster:
+    - eks-control-plane
+    - node-security-group
+    - node-security-group-self-ingress
+    - node-security-group-egress
+    - eks-cluster-role
+    - fargate-pod-execution-role
+    - karpenter-controller-role
+    - cilium-operator-role
+    - ec2-node-role
+    - ec2-node-instance-profile
+    - eks-cluster-policy-attachment
+    - fargate-execution-policy-attachment
+    - node-worker-policy-attachment
+    - node-ecr-pull-policy-attachment
+    - eks-oidc-provider
+    - karpenter-controller-policy
+    - cilium-operator-policy
+    - karpenter-fargate-profile
+    - coredns-addon
+    - admin-access-entry
+    - admin-access-policy-association
+    - deployment-access-entry
+    - deployment-access-policy-association
+    - node-access-entry
+    - interruption-queue
+    - interruption-queue-policy
+    - spot-interruption-rule
+    - spot-interruption-target
+    - rebalance-rule
+    - rebalance-target
+    - instance-state-rule
+    - instance-state-target
+    - scheduled-change-rule
+    - scheduled-change-target
+    - remote-kubeconfig-secret
+    - cluster-uses-network
+    - usage-cluster-role
+    - usage-cluster-sg
+    - usage-sg-self-ingress-sg
+    - usage-sg-egress-sg
+    - usage-fargate-cluster
+    - usage-fargate-role
+    - usage-coredns-cluster
+    - usage-instance-profile-node-role
+    - usage-admin-entry-cluster
+    - usage-admin-association-entry
+    - usage-deployment-entry-cluster
+    - usage-deployment-association-entry
+    - usage-node-entry-cluster
+    - usage-queue-policy-queue
+    - usage-eks-cluster-policy-attachment-role
+    - usage-fargate-execution-policy-attachment-role
+    - usage-node-worker-policy-attachment-role
+    - usage-node-ecr-pull-policy-attachment-role
+    - usage-spot-interruption-target-rule
+    - usage-rebalance-target-rule
+    - usage-instance-state-target-rule
+    - usage-scheduled-change-target-rule
+    - usage-spot-interruption-target-queue
+    - usage-rebalance-target-queue
+    - usage-instance-state-target-queue
+    - usage-scheduled-change-target-queue
+    - usage-oidc-cluster
+    - usage-karpenter-role-oidc
+    - usage-cilium-role-oidc
+    - usage-karpenter-policy-role
+    - usage-karpenter-policy-node-role
+    - usage-karpenter-policy-queue
+    - usage-cilium-policy-role
+    - usage-remote-kubeconfig-cluster
+  XClusterFoundation:
+    - kubernetes-provider-config
+    - helm-provider-config
+    - remote-auth-probe
+    - network-uat-approval
+    - foundation-uses-cluster
+    - karpenter-crds-release
+    - karpenter-controller-release
+    - cilium-release
+    - ec2-node-class
+    - spot-general-node-pool
+    - argocd-release
+    - gitops-apps-namespace
+    - argocd-apps-role
+    - argocd-apps-rolebinding
+    - argocd-project
+    - gitops-bootstrap
+    - retirement-evidence
+resources:
+  - id: environment/xnetwork-child
+    resource: XNetwork
+    owner: XEKSEnvironment
+    lifecycle: child-xr
+  - id: environment/xekscluster-child
+    resource: XEKSCluster
+    owner: XEKSEnvironment
+    lifecycle: child-xr
+  - id: environment/xclusterfoundation-child
+    resource: XClusterFoundation
+    owner: XEKSEnvironment
+    lifecycle: child-xr
+  - id: environment/root-deletion-protection
+    resource: ClusterUsage
+    owner: XEKSEnvironment
+    lifecycle: non-replaying-deletion-protection-edge
+  - id: network/vpc
+    resource: VPC
+    owner: XNetwork
+    lifecycle: aws-managed-resource
+  - id: network/internet-gateway
+    resource: InternetGateway
+    owner: XNetwork
+    lifecycle: aws-managed-resource
+  - id: network/public-subnets
+    resource: Subnet
+    owner: XNetwork
+    lifecycle: aws-managed-resource
+  - id: network/private-subnets
+    resource: Subnet
+    owner: XNetwork
+    lifecycle: aws-managed-resource
+  - id: network/route-tables-and-routes
+    resource: RouteTableAndRoute
+    owner: XNetwork
+    lifecycle: aws-managed-resource
+  - id: network/nat-eip
+    resource: EIP
+    owner: XNetwork
+    lifecycle: aws-managed-resource
+  - id: network/nat-gateway
+    resource: NATGateway
+    owner: XNetwork
+    lifecycle: aws-managed-resource
+  - id: cluster/eks-control-plane
+    resource: EKSCluster
+    owner: XEKSCluster
+    lifecycle: aws-managed-resource
+  - id: cluster/security-group
+    resource: EC2SecurityGroupAndRules
+    owner: XEKSCluster
+    lifecycle: aws-managed-resource
+  - id: cluster/coredns-addon
+    resource: EKSAddonCoreDNS
+    owner: XEKSCluster
+    lifecycle: aws-managed-resource
+  - id: cluster/fargate-profile
+    resource: EKSFargateProfile
+    owner: XEKSCluster
+    lifecycle: aws-managed-resource
+  - id: cluster/dedicated-iam
+    resource: IAMRolesPoliciesAndInstanceProfile
+    owner: XEKSCluster
+    lifecycle: aws-managed-resource
+  - id: cluster/oidc-provider
+    resource: IAMOIDCProvider
+    owner: XEKSCluster
+    lifecycle: aws-managed-resource
+  - id: cluster/access-api
+    resource: EKSAccessEntriesAndAssociations
+    owner: XEKSCluster
+    lifecycle: aws-managed-resource
+  - id: cluster/interruption-queue
+    resource: SQSQueueAndPolicy
+    owner: XEKSCluster
+    lifecycle: aws-managed-resource
+  - id: cluster/interruption-events
+    resource: EventBridgeRulesAndTargets
+    owner: XEKSCluster
+    lifecycle: aws-managed-resource
+  - id: cluster/remote-kubeconfig-secret
+    resource: TokenFreeEKSAccessSecret
+    owner: XEKSCluster
+    lifecycle: management-plane-secret
+  - id: foundation/kubernetes-provider-config
+    resource: KubernetesClusterProviderConfig
+    owner: XClusterFoundation
+    lifecycle: cluster-scoped-management-resource
+  - id: foundation/helm-provider-config
+    resource: HelmClusterProviderConfig
+    owner: XClusterFoundation
+    lifecycle: cluster-scoped-management-resource
+  - id: foundation/remote-auth-probe
+    resource: KubernetesObject
+    owner: XClusterFoundation
+    lifecycle: observe-only-remote-kubernetes-object
+  - id: foundation/network-uat-approval
+    resource: KubernetesConfigMap
+    owner: ExternalUATApprover
+    observedBy: XClusterFoundation
+    lifecycle: observe-only-runtime-evidence
+  - id: foundation/retirement-evidence
+    resource: KubernetesConfigMap
+    owner: LifecycleApprover
+    observedBy: XClusterFoundation
+    lifecycle: observe-only-management-plane-evidence
+  - id: foundation/cluster-usage
+    resource: ClusterUsage
+    owner: XClusterFoundation
+    lifecycle: deletion-protection-edge
+  - id: foundation/karpenter-crd-release
+    resource: KarpenterCRDHelmRelease
+    owner: XClusterFoundation
+    lifecycle: namespaced-management-resource
+  - id: foundation/karpenter-controller-release
+    resource: KarpenterControllerHelmRelease
+    owner: XClusterFoundation
+    lifecycle: namespaced-management-resource
+  - id: foundation/cilium-release
+    resource: CiliumHelmRelease
+    owner: XClusterFoundation
+    lifecycle: namespaced-management-resource
+  - id: foundation/argocd-release
+    resource: ArgoCDHelmRelease
+    owner: XClusterFoundation
+    lifecycle: namespaced-management-resource
+  - id: foundation/gitops-apps-namespace
+    resource: KubernetesNamespace
+    owner: XClusterFoundation
+    lifecycle: remote-kubernetes-object
+  - id: foundation/argocd-apps-rbac
+    resource: KubernetesRoleAndRoleBinding
+    owner: XClusterFoundation
+    lifecycle: remote-kubernetes-object
+  - id: foundation/argocd-project
+    resource: ArgoCDAppProject
+    owner: XClusterFoundation
+    lifecycle: remote-kubernetes-object
+  - id: foundation/ec2-node-class
+    resource: EC2NodeClass
+    owner: XClusterFoundation
+    lifecycle: remote-kubernetes-object
+  - id: foundation/spot-node-pool
+    resource: NodePool
+    owner: XClusterFoundation
+    lifecycle: remote-kubernetes-object
+  - id: foundation/gitops-bootstrap
+    resource: AuthorizedGitOpsBootstrap
+    owner: XClusterFoundation
+    lifecycle: remote-kubernetes-object
+  - id: karpenter/nodeclaims
+    resource: NodeClaim
+    owner: Karpenter
+    lifecycle: controller-derived
+  - id: karpenter/nodes
+    resource: KubernetesNode
+    owner: Karpenter
+    lifecycle: controller-derived
+  - id: karpenter/ec2-instances
+    resource: EC2Instance
+    owner: Karpenter
+    lifecycle: cloud-derived
+  - id: karpenter/launch-templates
+    resource: EC2LaunchTemplate
+    owner: Karpenter
+    lifecycle: cloud-derived
+  - id: cilium/ec2-eni-ipam
+    resource: EC2ENIAndIPAMAllocation
+    owner: CiliumOperator
+    lifecycle: cloud-derived
+  - id: argocd/authorized-business-applications
+    resource: ArgoBusinessApplicationResources
+    owner: ArgoCD
+    lifecycle: remote-kubernetes-object
+platformBootstrap:
+  owner: ManagementPlaneOperator
+  externalPrerequisites:
+    - id: aws-provider-source-principal
+      resource: AWSIAMRoleWithRenewableSessions
+      nameTemplate: <environment>-xp-source
+      lifecycle: externally-provisioned-bootstrap-retained
+    - id: aws-provider-execution-role
+      resource: AWSIAMRole
+      nameTemplate: <environment>-xp-aws
+      lifecycle: externally-provisioned-bootstrap-retained
+    - id: eks-deployment-role
+      resource: AWSIAMRole
+      nameTemplate: <environment>-eks-deploy
+      lifecycle: externally-provisioned-bootstrap-retained
+    - id: aws-provider-source-credentials
+      resource: Secret
+      namespace: crossplane-system
+      nameTemplate: <environment>-aws-source-credentials
+      lifecycle: externally-provisioned-and-rotated
+    - id: provider-kubernetes-runtime
+      resource: ProviderAndDeploymentRuntimeConfig
+      lifecycle: shared-management-plane-runtime
+    - id: provider-helm-runtime
+      resource: ProviderAndDeploymentRuntimeConfig
+      lifecycle: shared-management-plane-runtime
+    - id: provider-runtime-aws-credentials
+      resource: Secret
+      namespace: crossplane-system
+      name: eks-platform-aws-session
+      lifecycle: externally-renewed-temporary-session
+    - id: lifecycle-evidence-provider-config
+      resource: KubernetesProviderConfig
+      name: eks-lifecycle-evidence
+      lifecycle: shared-read-only-management-plane-runtime
+    - id: lifecycle-admission-policy
+      resource: ValidatingAdmissionPolicyAndRBAC
+      lifecycle: shared-management-plane-policy
+  forbiddenEnvironmentOwnership:
+    - aws-provider-source-principal
+    - aws-provider-execution-role
+    - eks-deployment-role
+    - aws-provider-source-credentials
+    - shared-provider-packages
+    - shared-provider-runtime-config
+    - provider-runtime-aws-credentials
+externalPrerequisites:
+  - aws-spot-service-linked-role
+  - aws-eks-service-linked-role
+  - aws-eks-fargate-service-linked-role
+  - aws-managed-policies
+  - aws-provider-source-principal
+  - aws-provider-execution-role
+  - aws-provider-credentials
+  - git-credentials
+  - administrator-and-deployment-principals
+conditionSemantics:
+  InfrastructureReady:
+    owner: XEKSCluster
+    means: EKS API, endpoint, identity, Fargate bootstrap, and required AWS infrastructure are ready.
+    excludes:
+      - CoreDNS workload readiness
+      - foundation component readiness
+      - runtime network UAT
+  FoundationReady:
+    owner: XClusterFoundation
+    means: declared foundational controllers and remote configuration report their own readiness.
+    excludes:
+      - business application readiness
+      - runtime network UAT
+      - proof that Spot capacity is currently available
+  NetworkUATApproved:
+    owner: XClusterFoundation
+    means: externally produced runtime evidence passed environment, cluster, UID, generation, actor, timestamp, and digest binding checks.
+    excludes:
+      - composition-executed network probing
+      - static proof of runtime connectivity
+  ArgoCDReady:
+    owner: XClusterFoundation
+    means: Argo CD Release, apps namespace RBAC, and deny-by-default AppProject report Ready.
+    excludes:
+      - Git repository reachability when gitOps is absent
+      - business application runtime health
+  RetirementEvidenceAccepted:
+    owner: XClusterFoundation
+    means: The next stage evidence matches both XR identities and generations, the exact transition and inventory hash, and stage-specific cleanup facts.
+    excludes:
+      - permission to skip a stage
+      - proof supplied by XRD CEL alone
+      - automatic deletion while the root XR has a deletion timestamp
+  RetirementCleanupComplete:
+    owner: XClusterFoundation
+    means: DeleteReady evidence confirms zero dynamic capacity, ENI, and remote foundation inventory before remote authentication is released.
+    excludes:
+      - observation that native EKS deletion protection is already disabled
+  NativeDeletionProtectionDisabled:
+    owner: XEKSCluster
+    means: The AWS provider observed deletionProtection false on a Ready managed EKS resource.
+    excludes:
+      - desired-spec intent without provider observation
+  RuntimeNetworkUAT:
+    owner: M2-AWS-UAT
+    means: real Fargate-to-EC2, DNS, Service, webhook, and network-policy tests passed.
+    staticValue: Unknown

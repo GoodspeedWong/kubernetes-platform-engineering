@@ -1,0 +1,426 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: xclusterfoundations.platform.aws.goodnotes.io
+spec:
+  group: platform.aws.goodnotes.io
+  names:
+    kind: XClusterFoundation
+    plural: xclusterfoundations
+  scope: Cluster
+  defaultCompositionUpdatePolicy: Manual
+  enforcedCompositionRef:
+    name: xclusterfoundations.platform.aws.goodnotes.io
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - parameters
+              properties:
+                parameters:
+                  type: object
+                  required:
+                    - availabilityZones
+                    - clusterRef
+                    - compute
+                    - environmentIdentity
+                    - environmentRef
+                    - kubernetesVersion
+                    - lifecycle
+                    - managementNamespace
+                    - nativeRoutingCIDR
+                    - nodeImageRef
+                    - platformReleaseRef
+                    - providerConfigRef
+                    - region
+                  x-kubernetes-validations:
+                    - rule: self.availabilityZones == oldSelf.availabilityZones
+                      message: availabilityZones are immutable with the dedicated network topology
+                    - rule: self.environmentRef == oldSelf.environmentRef
+                      message: environmentRef is immutable
+                    - rule: self.environmentIdentity.uid == oldSelf.environmentIdentity.uid
+                      message: environmentIdentity.uid is immutable
+                    - rule: self.clusterRef == oldSelf.clusterRef
+                      message: clusterRef is immutable; replace the environment to target another cluster
+                    - rule: self.region == oldSelf.region
+                      message: region is immutable
+                    - rule: self.providerConfigRef == oldSelf.providerConfigRef
+                      message: providerConfigRef is immutable because it is part of environment identity
+                    - rule: self.managementNamespace == oldSelf.managementNamespace
+                      message: managementNamespace is immutable
+                    - rule: self.nativeRoutingCIDR == oldSelf.nativeRoutingCIDR
+                      message: nativeRoutingCIDR is immutable with the environment network
+                    - rule: "!oldSelf.hasValue() || !has(oldSelf.value().gitOps) || has(self.gitOps)"
+                      message: gitOps configuration cannot be removed directly; advance retirementStage to remove GitOps safely
+                      optionalOldSelf: true
+                  properties:
+                    availabilityZones:
+                      type: array
+                      description: The two private-subnet availability zones inherited from the environment network intent.
+                      minItems: 2
+                      maxItems: 2
+                      x-kubernetes-list-type: set
+                      items:
+                        type: string
+                        minLength: 10
+                        maxLength: 36
+                    environmentRef:
+                      type: object
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - XEKSEnvironment
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 63
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    environmentIdentity:
+                      type: object
+                      description: Root XR identity propagated by the aggregate owner for evidence binding; consumers do not set this child field directly.
+                      required:
+                        - generation
+                        - uid
+                      properties:
+                        generation:
+                          type: integer
+                          format: int64
+                          minimum: 1
+                        uid:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                    clusterRef:
+                      type: object
+                      description: Reference to the dedicated cluster owner; no endpoint or AWS IDs are accepted.
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - XEKSCluster
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 63
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    managementNamespace:
+                      type: string
+                      description: Namespace for the cluster-owned connection Secret and namespaced provider resources; per-environment ClusterProviderConfigs remain cluster-scoped.
+                      default: crossplane-system
+                      enum:
+                        - crossplane-system
+                    nativeRoutingCIDR:
+                      type: string
+                      description: The environment VPC IPv4 CIDR inherited internally for Cilium native routing; it is not a consumer-selected CNI knob.
+                      pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$
+                    region:
+                      type: string
+                      minLength: 9
+                      maxLength: 32
+                      pattern: ^[a-z]{2}(-[a-z0-9]+)+-[0-9]+$
+                    providerConfigRef:
+                      type: object
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - ClusterProviderConfig
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 63
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    kubernetesVersion:
+                      type: string
+                      enum:
+                        - "1.35"
+                    platformReleaseRef:
+                      type: object
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - EnvironmentConfig
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 253
+                          pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    nodeImageRef:
+                      type: object
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - EnvironmentConfig
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 253
+                          pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    compute:
+                      type: object
+                      description: Spot-only, bounded NodePool intent.
+                      required:
+                        - class
+                        - limits
+                      properties:
+                        class:
+                          type: string
+                          enum:
+                            - spot-general
+                        limits:
+                          type: object
+                          required:
+                            - cpu
+                            - memory
+                          properties:
+                            cpu:
+                              type: string
+                              enum:
+                                - "4"
+                                - "8"
+                                - "16"
+                                - "32"
+                                - "64"
+                            memory:
+                              type: string
+                              enum:
+                                - 16Gi
+                                - 32Gi
+                                - 64Gi
+                                - 128Gi
+                                - 256Gi
+                    gitOps:
+                      type: object
+                      description: Optional controlled business Git source propagated by XEKSEnvironment; absence creates no syncable Application.
+                      required:
+                        - credentialsSecretRef
+                        - destinationNamespace
+                        - path
+                        - repositoryURL
+                        - revision
+                      x-kubernetes-validations:
+                        - rule: "!oldSelf.hasValue() || self.repositoryURL == oldSelf.value().repositoryURL"
+                          message: repositoryURL is immutable
+                          optionalOldSelf: true
+                        - rule: "!oldSelf.hasValue() || self.credentialsSecretRef == oldSelf.value().credentialsSecretRef"
+                          message: credentialsSecretRef is immutable
+                          optionalOldSelf: true
+                        - rule: "!oldSelf.hasValue() || self.destinationNamespace == oldSelf.value().destinationNamespace"
+                          message: destinationNamespace is immutable
+                          optionalOldSelf: true
+                        - rule: "!self.path.split('/').exists(segment, segment == '' || segment == '.' || segment == '..')"
+                          message: path must be a normalized relative Git path
+                      properties:
+                        repositoryURL:
+                          type: string
+                          minLength: 14
+                          maxLength: 2048
+                          pattern: ^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/-]+\.git$
+                        revision:
+                          type: string
+                          pattern: ^[0-9a-f]{40}$
+                        path:
+                          type: string
+                          minLength: 1
+                          maxLength: 253
+                          pattern: ^[A-Za-z0-9._/-]+$
+                        credentialsSecretRef:
+                          type: object
+                          required:
+                            - name
+                          properties:
+                            name:
+                              type: string
+                              minLength: 1
+                              maxLength: 63
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        destinationNamespace:
+                          type: string
+                          enum:
+                            - apps
+                    lifecycle:
+                      type: object
+                      required:
+                        - deletionProtection
+                        - retirementStage
+                      x-kubernetes-validations:
+                        - rule: self.deletionProtection || self.retirementStage == 'DeleteReady'
+                          message: deletionProtection may be disabled only at DeleteReady
+                        - rule: self.retirementStage == 'Active' || has(self.evidenceRef)
+                          message: every retirement stage requires an explicit management-plane evidence reference
+                        - rule: "!oldSelf.hasValue() || !has(oldSelf.value().evidenceRef) || (has(self.evidenceRef) && self.evidenceRef == oldSelf.value().evidenceRef)"
+                          message: lifecycle evidenceRef may be added once but cannot be changed or removed
+                          optionalOldSelf: true
+                        - rule: "oldSelf.hasValue() ? (self.retirementStage == oldSelf.value().retirementStage || (oldSelf.value().retirementStage == 'Active' && self.retirementStage == 'DrainWorkloads') || (oldSelf.value().retirementStage == 'DrainWorkloads' && self.retirementStage == 'RemoveGitOps') || (oldSelf.value().retirementStage == 'RemoveGitOps' && self.retirementStage == 'DrainCapacity') || (oldSelf.value().retirementStage == 'DrainCapacity' && self.retirementStage == 'RemoveFoundation') || (oldSelf.value().retirementStage == 'RemoveFoundation' && self.retirementStage == 'DeleteReady')) : (self.retirementStage == 'Active' && self.deletionProtection)"
+                          message: create at Active with deletion protection, then advance retirement exactly one stage at a time
+                          optionalOldSelf: true
+                      properties:
+                        retirementStage:
+                          type: string
+                          default: Active
+                          enum:
+                            - Active
+                            - DrainWorkloads
+                            - RemoveGitOps
+                            - DrainCapacity
+                            - RemoveFoundation
+                            - DeleteReady
+                        deletionProtection:
+                          type: boolean
+                          default: true
+                        evidenceRef:
+                          type: object
+                          required:
+                            - kind
+                            - name
+                            - namespace
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - ConfigMap
+                            name:
+                              type: string
+                              minLength: 1
+                              maxLength: 63
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                            namespace:
+                              type: string
+                              enum:
+                                - crossplane-system
+            status:
+              type: object
+              properties:
+                references:
+                  type: object
+                  properties:
+                    clusterRef:
+                      type: object
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                    remoteKubeconfigSecretRef:
+                      type: object
+                      required:
+                        - key
+                        - name
+                        - namespace
+                      properties:
+                        key:
+                          type: string
+                          enum:
+                            - kubeconfig
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                          enum:
+                            - crossplane-system
+                    helmProviderConfigName:
+                      type: string
+                    kubernetesProviderConfigName:
+                      type: string
+                    nodePoolName:
+                      type: string
+                    ec2NodeClassName:
+                      type: string
+                    argoCDReleaseName:
+                      type: string
+                    appProjectName:
+                      type: string
+                    bootstrapApplicationName:
+                      type: string
+                actualVersions:
+                  type: object
+                  properties:
+                    cilium:
+                      type: string
+                    karpenter:
+                      type: string
+                    argoCD:
+                      type: string
+                    nodeImage:
+                      type: string
+                retirement:
+                  type: object
+                  properties:
+                    requestedStage:
+                      type: string
+                    approvedStage:
+                      type: string
+                    evidenceAccepted:
+                      type: boolean
+                    cleanupComplete:
+                      type: boolean
+                    inventorySha256:
+                      type: string
+                      pattern: ^[0-9a-f]{64}$
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - type
+                  items:
+                    type: object
+                    required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                    properties:
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      message:
+                        type: string
+                        maxLength: 32768
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      reason:
+                        type: string
+                        minLength: 1
+                        maxLength: 1024
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      type:
+                        type: string
+                        minLength: 1
+                        maxLength: 316

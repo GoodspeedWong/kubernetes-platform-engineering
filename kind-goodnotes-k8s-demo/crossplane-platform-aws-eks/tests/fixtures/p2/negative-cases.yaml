@@ -1,0 +1,62 @@
+schemaVersion: 1
+mutations:
+  - id: invalid-class
+    path: spec.parameters.class
+    value: production
+    expectedError: spec.parameters.class must be dev
+  - id: unlimited-cpu
+    path: spec.parameters.compute.limits.cpu
+    value: unlimited
+    expectedError: compute.limits.cpu is not one of the bounded platform values
+  - id: unlimited-memory
+    path: spec.parameters.compute.limits.memory
+    value: unlimited
+    expectedError: compute.limits.memory is not one of the bounded platform values
+  - id: on-demand-bypass
+    path: spec.parameters.compute.capacityType
+    value: on-demand
+    expectedError: forbidden implementation field
+  - id: unrestricted-api
+    path: spec.parameters.access.publicAccessCidrs
+    value:
+      - 0.0.0.0/0
+    expectedError: unrestricted or non-IPv4 public endpoint access is forbidden
+  - id: shared-admin-deployment-identity
+    path: spec.parameters.access.deploymentPrincipalArn
+    value: arn:aws:iam::000000000000:role/TEST-ONLY-EksAdmin
+    expectedError: administrator and deployment principals must be distinct IAM roles
+  - id: raw-subnets
+    path: spec.parameters.subnetIds
+    value:
+      - subnet-test-only-a
+      - subnet-test-only-b
+    expectedError: forbidden implementation field
+catalogCases:
+  - id: incompatible-platform-release
+    platformRelease: platform-release-incompatible.yaml
+    expectedError: platform release is incompatible with kubernetesVersion
+retirementTransitions:
+  - old: null
+    new: Active
+    allowed: true
+  - old: null
+    new: DeleteReady
+    allowed: false
+  - old: Active
+    new: Active
+    allowed: true
+  - old: Active
+    new: DrainWorkloads
+    allowed: true
+  - old: Active
+    new: RemoveGitOps
+    allowed: false
+  - old: DrainWorkloads
+    new: RemoveGitOps
+    allowed: true
+  - old: RemoveGitOps
+    new: Active
+    allowed: false
+  - old: RemoveFoundation
+    new: DeleteReady
+    allowed: true

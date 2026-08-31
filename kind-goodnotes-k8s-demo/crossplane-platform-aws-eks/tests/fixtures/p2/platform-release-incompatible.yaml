@@ -1,0 +1,21 @@
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: test-only-platform-release
+  annotations:
+    platform.aws.goodnotes.io/test-only: "true"
+spec:
+  data:
+    schemaVersion: 1
+    kubernetes: "1.34"
+    cilium:
+      chart: "1.19.0"
+      app: "1.19.0"
+    karpenter:
+      crdChart: "1.8.0"
+      controllerChart: "1.8.0"
+      app: "1.8.0"
+    argoCD:
+      chart: "9.0.0"
+      app: v3.1.0
+    coreDNSAddon: v1.12.4-eksbuild.1

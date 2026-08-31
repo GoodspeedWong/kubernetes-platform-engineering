@@ -1,0 +1,51 @@
+apiVersion: platform.aws.goodnotes.io/v1alpha1
+kind: XEKSEnvironment
+metadata:
+  name: eks-dev-spot
+  uid: 00000000-0000-4000-8000-000000000002
+  generation: 2
+spec:
+  crossplane:
+    compositionUpdatePolicy: Manual
+  parameters:
+    class: dev
+    region: us-east-1
+    providerConfigRef:
+      kind: ClusterProviderConfig
+      name: test-only-aws
+    kubernetesVersion: "1.35"
+    platformReleaseRef:
+      kind: EnvironmentConfig
+      name: test-only-platform-release
+    nodeImageRef:
+      kind: EnvironmentConfig
+      name: test-only-node-image
+    network:
+      cidrBlock: 10.50.0.0/16
+      publicSubnets:
+        a:
+          availabilityZone: us-east-1a
+          cidrBlock: 10.50.0.0/24
+        b:
+          availabilityZone: us-east-1b
+          cidrBlock: 10.50.1.0/24
+      privateSubnets:
+        a:
+          availabilityZone: us-east-1a
+          cidrBlock: 10.50.10.0/24
+        b:
+          availabilityZone: us-east-1b
+          cidrBlock: 10.50.11.0/24
+    compute:
+      class: spot-general
+      limits:
+        cpu: "16"
+        memory: 64Gi
+    access:
+      adminPrincipalArn: arn:aws:iam::000000000000:role/TEST-ONLY-EksAdmin
+      deploymentPrincipalArn: arn:aws:iam::000000000000:role/TEST-ONLY-EksDeployer
+      publicAccessCidrs:
+        - 203.0.113.10/32
+    lifecycle:
+      retirementStage: Active
+      deletionProtection: true

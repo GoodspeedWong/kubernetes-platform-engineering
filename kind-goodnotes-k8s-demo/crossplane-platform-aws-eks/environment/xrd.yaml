@@ -1,0 +1,493 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: xeksenvironments.platform.aws.goodnotes.io
+spec:
+  group: platform.aws.goodnotes.io
+  names:
+    kind: XEKSEnvironment
+    plural: xeksenvironments
+  scope: Cluster
+  defaultCompositionUpdatePolicy: Manual
+  enforcedCompositionRef:
+    name: xeksenvironments.platform.aws.goodnotes.io
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-validations:
+            - rule: self.metadata.name.size() <= 52
+              message: environment name must be at most 52 characters so deterministic child names remain DNS-label safe
+            - rule: self.metadata.name.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+              message: environment name must be a lowercase DNS label without dots
+          properties:
+            spec:
+              type: object
+              required:
+                - parameters
+              properties:
+                parameters:
+                  type: object
+                  required:
+                    - access
+                    - class
+                    - compute
+                    - kubernetesVersion
+                    - lifecycle
+                    - network
+                    - nodeImageRef
+                    - platformReleaseRef
+                    - providerConfigRef
+                    - region
+                  x-kubernetes-validations:
+                    - rule: self.class == oldSelf.class
+                      message: class is immutable; create a new environment to change it
+                    - rule: self.region == oldSelf.region
+                      message: region is immutable; create a new environment to change it
+                    - rule: self.network == oldSelf.network
+                      message: network topology is immutable; create a new environment to change it
+                    - rule: self.providerConfigRef == oldSelf.providerConfigRef
+                      message: providerConfigRef is immutable because it is part of the environment identity
+                    - rule: "!oldSelf.hasValue() || !has(oldSelf.value().gitOps) || has(self.gitOps)"
+                      message: gitOps configuration cannot be removed directly; advance retirementStage to remove GitOps safely
+                      optionalOldSelf: true
+                    - rule: self.network.publicSubnets.a.availabilityZone.startsWith(self.region) && self.network.publicSubnets.b.availabilityZone.startsWith(self.region) && self.network.privateSubnets.a.availabilityZone.startsWith(self.region) && self.network.privateSubnets.b.availabilityZone.startsWith(self.region)
+                      message: every subnet availability zone must belong to the selected region
+                  properties:
+                    class:
+                      type: string
+                      description: Intent class. v1alpha1 supports a dedicated development environment only.
+                      default: dev
+                      enum:
+                        - dev
+                    region:
+                      type: string
+                      description: AWS region for the dedicated environment.
+                      minLength: 9
+                      maxLength: 32
+                      pattern: ^[a-z]{2}(-[a-z0-9]+)+-[0-9]+$
+                    providerConfigRef:
+                      type: object
+                      description: Explicit reference to the management-plane AWS provider identity.
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                          default: ClusterProviderConfig
+                          enum:
+                            - ClusterProviderConfig
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 63
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    kubernetesVersion:
+                      type: string
+                      description: EKS control-plane version locked by this API revision.
+                      enum:
+                        - "1.35"
+                    platformReleaseRef:
+                      type: object
+                      description: Reference to an administrator-owned compatible platform release catalog entry.
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                          default: EnvironmentConfig
+                          enum:
+                            - EnvironmentConfig
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 253
+                          pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    nodeImageRef:
+                      type: object
+                      description: Reference to an administrator-owned regional AL2023 image catalog entry.
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                          default: EnvironmentConfig
+                          enum:
+                            - EnvironmentConfig
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 253
+                          pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    network:
+                      type: object
+                      description: Dedicated dual-AZ network intent. The implementation maps this to XNetwork.
+                      required:
+                        - cidrBlock
+                        - privateSubnets
+                        - publicSubnets
+                      properties:
+                        cidrBlock:
+                          type: string
+                          pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(1[6-9]|2[0-4])$
+                        publicSubnets:
+                          type: object
+                          required:
+                            - a
+                            - b
+                          x-kubernetes-validations:
+                            - rule: self.a.availabilityZone != self.b.availabilityZone
+                              message: public subnets must use two distinct availability zones
+                            - rule: self.a.cidrBlock != self.b.cidrBlock
+                              message: public subnet CIDRs must be distinct
+                          properties:
+                            a:
+                              type: object
+                              required:
+                                - availabilityZone
+                                - cidrBlock
+                              properties:
+                                availabilityZone:
+                                  type: string
+                                  minLength: 10
+                                  maxLength: 36
+                                cidrBlock:
+                                  type: string
+                                  pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(2[0-8])$
+                            b:
+                              type: object
+                              required:
+                                - availabilityZone
+                                - cidrBlock
+                              properties:
+                                availabilityZone:
+                                  type: string
+                                  minLength: 10
+                                  maxLength: 36
+                                cidrBlock:
+                                  type: string
+                                  pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(2[0-8])$
+                        privateSubnets:
+                          type: object
+                          required:
+                            - a
+                            - b
+                          x-kubernetes-validations:
+                            - rule: self.a.availabilityZone != self.b.availabilityZone
+                              message: private subnets must use two distinct availability zones
+                            - rule: self.a.cidrBlock != self.b.cidrBlock
+                              message: private subnet CIDRs must be distinct
+                          properties:
+                            a:
+                              type: object
+                              required:
+                                - availabilityZone
+                                - cidrBlock
+                              properties:
+                                availabilityZone:
+                                  type: string
+                                  minLength: 10
+                                  maxLength: 36
+                                cidrBlock:
+                                  type: string
+                                  pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(2[0-8])$
+                            b:
+                              type: object
+                              required:
+                                - availabilityZone
+                                - cidrBlock
+                              properties:
+                                availabilityZone:
+                                  type: string
+                                  minLength: 10
+                                  maxLength: 36
+                                cidrBlock:
+                                  type: string
+                                  pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(2[0-8])$
+                      x-kubernetes-validations:
+                        - rule: self.publicSubnets.a.availabilityZone == self.privateSubnets.a.availabilityZone && self.publicSubnets.b.availabilityZone == self.privateSubnets.b.availabilityZone
+                          message: public and private subnet pairs must use the same two availability zones
+                        - rule: self.publicSubnets.a.cidrBlock != self.privateSubnets.a.cidrBlock && self.publicSubnets.a.cidrBlock != self.privateSubnets.b.cidrBlock && self.publicSubnets.b.cidrBlock != self.privateSubnets.a.cidrBlock && self.publicSubnets.b.cidrBlock != self.privateSubnets.b.cidrBlock
+                          message: public and private subnet CIDRs must be distinct
+                    compute:
+                      type: object
+                      description: Bounded Karpenter capacity intent. There is no On-Demand fallback field.
+                      required:
+                        - class
+                        - limits
+                      properties:
+                        class:
+                          type: string
+                          default: spot-general
+                          enum:
+                            - spot-general
+                        limits:
+                          type: object
+                          required:
+                            - cpu
+                            - memory
+                          properties:
+                            cpu:
+                              type: string
+                              default: "16"
+                              enum:
+                                - "4"
+                                - "8"
+                                - "16"
+                                - "32"
+                                - "64"
+                            memory:
+                              type: string
+                              default: 64Gi
+                              enum:
+                                - 16Gi
+                                - 32Gi
+                                - 64Gi
+                                - 128Gi
+                                - 256Gi
+                    access:
+                      type: object
+                      description: Distinct EKS administrator/deployment identities and restricted public endpoint access intent.
+                      required:
+                        - adminPrincipalArn
+                        - deploymentPrincipalArn
+                        - publicAccessCidrs
+                      x-kubernetes-validations:
+                        - rule: self.adminPrincipalArn != self.deploymentPrincipalArn
+                          message: administrator and deployment principals must be distinct IAM roles
+                      properties:
+                        adminPrincipalArn:
+                          type: string
+                          minLength: 20
+                          maxLength: 2048
+                          pattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$
+                        deploymentPrincipalArn:
+                          type: string
+                          minLength: 20
+                          maxLength: 2048
+                          pattern: ^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$
+                        publicAccessCidrs:
+                          type: array
+                          minItems: 1
+                          maxItems: 8
+                          x-kubernetes-list-type: set
+                          items:
+                            type: string
+                            pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$
+                          x-kubernetes-validations:
+                            - rule: self.all(cidr, cidr != '0.0.0.0/0')
+                              message: unrestricted EKS public endpoint access is forbidden
+                    gitOps:
+                      type: object
+                      description: Optional controlled business Git source. Absence is fail-closed and creates no syncable Application.
+                      required:
+                        - credentialsSecretRef
+                        - destinationNamespace
+                        - path
+                        - repositoryURL
+                        - revision
+                      x-kubernetes-validations:
+                        - rule: "!oldSelf.hasValue() || self.repositoryURL == oldSelf.value().repositoryURL"
+                          message: repositoryURL is immutable; create a separately reviewed environment for another repository
+                          optionalOldSelf: true
+                        - rule: "!oldSelf.hasValue() || self.credentialsSecretRef == oldSelf.value().credentialsSecretRef"
+                          message: credentialsSecretRef is immutable
+                          optionalOldSelf: true
+                        - rule: "!oldSelf.hasValue() || self.destinationNamespace == oldSelf.value().destinationNamespace"
+                          message: destinationNamespace is immutable
+                          optionalOldSelf: true
+                        - rule: "!self.path.split('/').exists(segment, segment == '' || segment == '.' || segment == '..')"
+                          message: path must be a normalized relative Git path
+                      properties:
+                        repositoryURL:
+                          type: string
+                          minLength: 14
+                          maxLength: 2048
+                          pattern: ^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/-]+\.git$
+                        revision:
+                          type: string
+                          description: Exact reviewed Git commit SHA; branches and floating tags are forbidden.
+                          pattern: ^[0-9a-f]{40}$
+                        path:
+                          type: string
+                          minLength: 1
+                          maxLength: 253
+                          pattern: ^[A-Za-z0-9._/-]+$
+                        credentialsSecretRef:
+                          type: object
+                          description: Name of an externally provisioned Argo CD repository Secret in the remote argocd namespace; secret data never enters the XR.
+                          required:
+                            - name
+                          properties:
+                            name:
+                              type: string
+                              minLength: 1
+                              maxLength: 63
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        destinationNamespace:
+                          type: string
+                          enum:
+                            - apps
+                    lifecycle:
+                      type: object
+                      description: Explicit, monotonic retirement gate for this dedicated environment.
+                      required:
+                        - deletionProtection
+                        - retirementStage
+                      x-kubernetes-validations:
+                        - rule: self.deletionProtection || self.retirementStage == 'DeleteReady'
+                          message: deletionProtection may be disabled only at DeleteReady
+                        - rule: self.retirementStage == 'Active' || has(self.evidenceRef)
+                          message: every retirement stage requires an explicit management-plane evidence reference
+                        - rule: "!oldSelf.hasValue() || !has(oldSelf.value().evidenceRef) || (has(self.evidenceRef) && self.evidenceRef == oldSelf.value().evidenceRef)"
+                          message: lifecycle evidenceRef may be added once but cannot be changed or removed
+                          optionalOldSelf: true
+                        - rule: "oldSelf.hasValue() ? (self.retirementStage == oldSelf.value().retirementStage || (oldSelf.value().retirementStage == 'Active' && self.retirementStage == 'DrainWorkloads') || (oldSelf.value().retirementStage == 'DrainWorkloads' && self.retirementStage == 'RemoveGitOps') || (oldSelf.value().retirementStage == 'RemoveGitOps' && self.retirementStage == 'DrainCapacity') || (oldSelf.value().retirementStage == 'DrainCapacity' && self.retirementStage == 'RemoveFoundation') || (oldSelf.value().retirementStage == 'RemoveFoundation' && self.retirementStage == 'DeleteReady')) : (self.retirementStage == 'Active' && self.deletionProtection)"
+                          message: create at Active with deletion protection, then advance retirement exactly one stage at a time
+                          optionalOldSelf: true
+                      properties:
+                        retirementStage:
+                          type: string
+                          default: Active
+                          enum:
+                            - Active
+                            - DrainWorkloads
+                            - RemoveGitOps
+                            - DrainCapacity
+                            - RemoveFoundation
+                            - DeleteReady
+                        deletionProtection:
+                          type: boolean
+                          default: true
+                        evidenceRef:
+                          type: object
+                          description: Immutable reference to an externally authored, audited retirement ConfigMap in the management plane.
+                          required:
+                            - kind
+                            - name
+                            - namespace
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - ConfigMap
+                            name:
+                              type: string
+                              minLength: 1
+                              maxLength: 63
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                            namespace:
+                              type: string
+                              enum:
+                                - crossplane-system
+            status:
+              type: object
+              properties:
+                clusterName:
+                  type: string
+                endpoint:
+                  type: string
+                references:
+                  type: object
+                  properties:
+                    networkRef:
+                      type: object
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                    clusterRef:
+                      type: object
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                    foundationRef:
+                      type: object
+                      required:
+                        - kind
+                        - name
+                      properties:
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                actualVersions:
+                  type: object
+                  properties:
+                    controlPlane:
+                      type: string
+                    coreDNSAddon:
+                      type: string
+                    cilium:
+                      type: string
+                    karpenter:
+                      type: string
+                    argoCD:
+                      type: string
+                    nodeImage:
+                      type: string
+                retirement:
+                  type: object
+                  properties:
+                    requestedStage:
+                      type: string
+                    approvedStage:
+                      type: string
+                    cleanupComplete:
+                      type: boolean
+                    evidenceAccepted:
+                      type: boolean
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - type
+                  items:
+                    type: object
+                    required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                    properties:
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      message:
+                        type: string
+                        maxLength: 32768
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      reason:
+                        type: string
+                        minLength: 1
+                        maxLength: 1024
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      type:
+                        type: string
+                        minLength: 1
+                        maxLength: 316

@@ -1,0 +1,17 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-kcl
+  annotations:
+    render.crossplane.io/runtime-docker-pull-policy: Never
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-kcl@sha256:01ce52d971354cc5159529b9022046644896958d977e0842dc6e398a2137ba2a
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-auto-ready
+  annotations:
+    render.crossplane.io/runtime-docker-pull-policy: Never
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-auto-ready@sha256:49cc4de717311b589c0ad9ae6d8d2256e2754ab4884391a5655b71df29bc3684

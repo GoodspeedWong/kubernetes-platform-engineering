@@ -1,0 +1,11 @@
+schemaVersion: 1
+digests:
+  cluster: a9c5dd2c9053578a38b45a4749ec827852e0b380f8ad759dc7c43f13b68394d1
+  environment: 6e316a05b68349df86d180076390a6d261da55b7fb855b5d4be53f7e586cfa4a
+  foundation: 04164148071ee238fd8d703a7827d3383ab43488b343a3eed9c51a01d05db696
+  network: 64ccc67180581971701e4d0243c7e50984e6dbf29634c3fccbddef25917cf923
+documentCounts:
+  cluster: 57
+  environment: 5
+  foundation: 7
+  network: 38

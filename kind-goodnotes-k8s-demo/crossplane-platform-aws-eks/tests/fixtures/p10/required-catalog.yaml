@@ -1,0 +1,31 @@
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: test-only-platform-release
+spec:
+  data:
+    schemaVersion: 1
+    kubernetes: "1.35"
+    cilium:
+      chart: "1.20.1"
+    karpenter:
+      crdChart: "1.14.1"
+      controllerChart: "1.14.1"
+    argoCD:
+      chart: "10.4.0"
+---
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: test-only-node-image
+spec:
+  data:
+    schemaVersion: 1
+    region: us-east-1
+    kubernetes: "1.35"
+    images:
+      amd64:
+        family: AL2023
+        release: v20260728
+        alias: al2023@v20260728
+        amiId: ami-00000000000000000

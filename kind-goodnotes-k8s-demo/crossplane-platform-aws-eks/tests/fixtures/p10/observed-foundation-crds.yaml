@@ -1,0 +1,13 @@
+apiVersion: helm.m.crossplane.io/v1beta1
+kind: Release
+metadata:
+  name: test-only-karpenter-crds
+  namespace: crossplane-system
+  annotations:
+    crossplane.io/composition-resource-name: karpenter-crds-release
+    crossplane.io/external-name: karpenter-crd
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available

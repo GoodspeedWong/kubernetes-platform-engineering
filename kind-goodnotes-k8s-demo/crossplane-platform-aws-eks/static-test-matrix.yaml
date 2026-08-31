@@ -1,0 +1,106 @@
+schemaVersion: 1
+scenarios:
+  - id: S01
+    assertion: API accepts only reviewed intent, immutable references, and finite limits.
+    tests:
+      - test_p2_api_contracts.py::P2APIContractTests.test_environment_api_exposes_intent_and_blocks_bypass_fields
+      - test_p2_api_contracts.py::P2APIContractTests.test_declared_negative_mutations_fail_closed
+  - id: S02
+    assertion: Legacy no-NAT remains stable and the EKS profile has one scoped NAT path.
+    tests:
+      - test_p3_network.py::P3NetworkTests.test_legacy_fixture_matches_existing_instance_and_keeps_13_aws_identities
+      - test_p3_network.py::P3NetworkTests.test_single_nat_renders_private_egress_and_scoped_discovery
+  - id: S03
+    assertion: IAM trust, PassRole, IRSA, Access Entry, and Provider identities remain separated.
+    tests:
+      - test_p4_cluster.py::P4ClusterTests.test_iam_roles_have_separate_trust_and_exact_attachments
+      - test_p5_remote_auth.py::P5RemoteAuthenticationTests.test_provider_configs_use_cluster_owned_secret_and_injected_aws_identity
+  - id: S04
+    assertion: Zero-EC2 bootstrap declares Fargate Karpenter and Spot capacity without claiming total readiness.
+    tests:
+      - test_p4_cluster.py::P4ClusterTests.test_infrastructure_ready_excludes_coredns_but_requires_api_and_fargate
+      - test_p6_karpenter.py::P6KarpenterTests.test_crd_release_is_the_unique_gate_for_all_p6_resources
+  - id: S05
+    assertion: Controllers use Default DNS and Cilium reaches the real API endpoint directly.
+    tests:
+      - test_p6_karpenter.py::P6KarpenterTests.test_controller_values_match_fargate_irsa_and_zero_node_bootstrap
+      - test_p7_cilium.py::P7CiliumTests.test_merged_values_match_review_contract_and_cluster_runtime_material
+  - id: S06
+    assertion: Every NodePool is exactly Spot-only and all bypass mutations fail.
+    tests:
+      - test_p6_karpenter.py::P6KarpenterTests.test_node_pool_is_dynamic_flexible_bounded_and_spot_only
+      - test_p6_karpenter.py::P6KarpenterTests.test_spot_contract_rejects_every_purchase_and_scaling_bypass
+  - id: S07
+    assertion: Spot shortage retains the declaration and never creates a fallback purchase type.
+    tests:
+      - test_p6_karpenter.py::P6KarpenterTests.test_conditions_distinguish_gating_ready_and_spot_unavailable
+  - id: S08
+    assertion: Cilium uses ENI, native routing, full kube-proxy replacement, and no chaining.
+    tests:
+      - test_p7_cilium.py::P7CiliumTests.test_eni_native_kpr_and_non_chaining_contract
+      - test_p7_cilium.py::P7CiliumTests.test_coredns_has_one_owner_and_neither_cni_runs_on_fargate
+  - id: S09
+    assertion: Karpenter matches Fargate while Cilium agent and operator match only Spot EC2.
+    tests:
+      - test_p4_cluster.py::P4ClusterTests.test_fargate_profile_matches_only_labeled_karpenter_pods_in_private_subnets
+      - test_p7_cilium.py::P7CiliumTests.test_agent_and_operator_are_ec2_only_and_bootstrap_without_coredns
+  - id: S10
+    assertion: The Cilium startup taint and tolerations form a terminating bootstrap path.
+    tests:
+      - test_p6_karpenter.py::P6KarpenterTests.test_node_pool_is_dynamic_flexible_bounded_and_spot_only
+      - test_p7_cilium.py::P7CiliumTests.test_zero_node_bootstrap_model_is_acyclic_and_keeps_uat_as_last_gate
+  - id: S11
+    assertion: Credential denial and expiry are diagnosable without exposing static secrets.
+    tests:
+      - test_p5_remote_auth.py::P5RemoteAuthenticationTests.test_auth_conditions_distinguish_waiting_ready_and_denied
+      - test_p5_remote_auth.py::P5RemoteAuthenticationTests.test_cluster_exports_only_endpoint_ca_and_cluster_name
+  - id: S12
+    assertion: Missing observations preserve stable identity and the last approved desired set.
+    tests:
+      - test_p2_api_contracts.py::P2APIContractTests.test_environment_kcl_renders_three_children_with_or_without_observation
+      - test_p9_lifecycle.py::P9LifecycleTests.test_observation_gap_never_recreates_a_resource_removed_by_approved_stage
+  - id: S13
+    assertion: Empty Git is safe and business GitOps cannot mutate platform-scoped resources.
+    tests:
+      - test_p8_argocd.py::P8ArgoCDTests.test_business_rbac_and_project_are_namespaced_and_fail_closed
+      - test_p8_argocd.py::P8ArgoCDTests.test_git_source_contract_accepts_static_fixture_and_rejects_floating_revision
+  - id: S14
+    assertion: Every cloud, chart, CRD, and remote object has one declared owner.
+    tests:
+      - test_p2_api_contracts.py::P2APIContractTests.test_single_owner_inventory_includes_remote_and_cloud_derived_objects
+      - test_p8_argocd.py::P8ArgoCDTests.test_duplicate_remote_owner_identity_is_rejected
+  - id: S15
+    assertion: Upgrade sequencing is manual, probe-gated, and stops on insufficient Spot capacity.
+    tests:
+      - test_p9_lifecycle.py::P9LifecycleTests.test_composition_revisions_are_manual_and_require_review
+      - test_p10_validation.py::P10ValidationTests.test_upgrade_and_last_node_contracts_have_explicit_stop_points
+  - id: S16
+    assertion: Retirement advances one stage and rejects stale, wrong-identity, or non-zero evidence.
+    tests:
+      - test_p2_api_contracts.py::P2APIContractTests.test_retirement_old_new_transition_matrix
+      - test_p9_lifecycle.py::P9LifecycleTests.test_stale_wrong_environment_or_nonzero_cleanup_evidence_retains_resources
+  - id: S17
+    assertion: Usage dependencies are acyclic and root protection is released only after native observation.
+    tests:
+      - test_p9_lifecycle.py::P9LifecycleTests.test_aggregate_owns_three_children_and_non_replaying_root_protection
+      - test_p9_lifecycle.py::P9LifecycleTests.test_delete_ready_cleanup_releases_root_and_native_protection_only_after_observation
+  - id: S18
+    assertion: PDB and hook order remains operable through the last EC2 node without early controller removal.
+    tests:
+      - test_p10_validation.py::P10ValidationTests.test_upgrade_and_last_node_contracts_have_explicit_stop_points
+      - test_p9_lifecycle.py::P9LifecycleTests.test_each_approved_stage_removes_only_its_controlled_inventory
+  - id: S19
+    assertion: All composition layers, embedded manifests, and chart outputs receive strict validation.
+    tests:
+      - test_p10_validation.py::P10ValidationTests.test_recursive_and_embedded_validation_contracts_are_fail_closed
+      - test_p10_validation.py::P10ValidationTests.test_chart_auditors_cover_actual_workloads_crds_and_rbac
+  - id: S20
+    assertion: Install roots exclude examples and runtime instances and every version is immutable.
+    tests:
+      - test_p10_validation.py::P10ValidationTests.test_all_kustomize_entrypoints_build_and_root_has_no_instances
+      - test_p1_tooling.py::P1ToolingTests.test_version_lock_has_exact_package_and_chart_pins
+  - id: S21
+    assertion: Test discovery is non-zero, injected errors fail, and renders are logically repeatable.
+    tests:
+      - test_p10_validation.py::P10ValidationTests.test_matrix_references_real_tests_and_covers_s01_through_s21
+      - test_p10_validation.py::P10ValidationTests.test_negative_injection_breaks_real_validators

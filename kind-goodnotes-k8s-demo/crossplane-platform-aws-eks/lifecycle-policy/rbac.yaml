@@ -1,0 +1,87 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eks-lifecycle-evidence-reader
+  namespace: crossplane-system
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eks-lifecycle-evidence-reader
+  namespace: crossplane-system
+subjects:
+  - kind: Group
+    name: system:serviceaccounts:crossplane-system
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eks-lifecycle-evidence-reader
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eks-lifecycle-evidence-writer
+  namespace: crossplane-system
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+      - get
+      - patch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eks-lifecycle-evidence-writer
+  namespace: crossplane-system
+subjects:
+  - kind: Group
+    name: platform-eks-lifecycle-approvers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eks-lifecycle-evidence-writer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eks-lifecycle-stage-editor
+rules:
+  - apiGroups:
+      - platform.aws.goodnotes.io
+    resources:
+      - xeksenvironments
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eks-lifecycle-stage-editor
+subjects:
+  - kind: Group
+    name: platform-eks-lifecycle-approvers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: eks-lifecycle-stage-editor

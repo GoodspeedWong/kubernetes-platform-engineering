@@ -1,0 +1,99 @@
+apiVersion: platform.aws.goodnotes.io/v1alpha1
+kind: RetirementInventory
+metadata:
+  name: eks-environment-retirement-v1
+spec:
+  canonicalHash: sha256-json-sort-keys-compact-v1
+  stages:
+    DrainWorkloads:
+      inventorySha256: fbb467431d7c826f6f7ef708f05720295713644227bb764df2d29da419b1b3ab
+      remove:
+        - foundation/gitops-bootstrap
+      retain:
+        - foundation/argocd-project
+        - foundation/argocd-release
+        - foundation/cilium-release
+        - foundation/ec2-node-class
+        - foundation/helm-provider-config
+        - foundation/karpenter-controller-release
+        - foundation/karpenter-crds-release
+        - foundation/kubernetes-provider-config
+        - foundation/remote-auth-probe
+        - foundation/spot-general-node-pool
+      requiredEvidence:
+        application-count: "0"
+        finalizers-cleared: "true"
+        load-balancer-count: "0"
+        persistent-volumes-reviewed: "true"
+    RemoveGitOps:
+      inventorySha256: b332df0d4117581633d0b83e21f12a4719cd1283dcf126b293817f2a11e0f45d
+      remove:
+        - foundation/argocd-apps-role
+        - foundation/argocd-apps-rolebinding
+        - foundation/argocd-project
+        - foundation/argocd-release
+        - foundation/gitops-apps-namespace
+      retain:
+        - foundation/cilium-release
+        - foundation/ec2-node-class
+        - foundation/helm-provider-config
+        - foundation/karpenter-controller-release
+        - foundation/karpenter-crds-release
+        - foundation/kubernetes-provider-config
+        - foundation/remote-auth-probe
+        - foundation/spot-general-node-pool
+      requiredEvidence:
+        argocd-resource-count: "0"
+        business-pdb-blockers: "0"
+        last-node-strategy-ready: "true"
+        required-ec2-hooks-complete: "true"
+    DrainCapacity:
+      inventorySha256: 6d55af77af0408b62309612bca2c7ea6396665473094aeb60301dafcc82137bb
+      remove:
+        - foundation/spot-general-node-pool
+      retain:
+        - foundation/cilium-release
+        - foundation/ec2-node-class
+        - foundation/helm-provider-config
+        - foundation/karpenter-controller-release
+        - foundation/karpenter-crds-release
+        - foundation/kubernetes-provider-config
+        - foundation/remote-auth-probe
+      requiredEvidence:
+        business-pdb-blockers: "0"
+        capacity-residual-count: "0"
+        ec2-instance-count: "0"
+        nodeclaim-count: "0"
+    RemoveFoundation:
+      inventorySha256: 2d1ec06e768a9186168145a10f72a3860e728b0ced41d531297e7db9970ba98f
+      remove:
+        - foundation/cilium-release
+        - foundation/ec2-node-class
+        - foundation/karpenter-controller-release
+        - foundation/karpenter-crds-release
+        - foundation/network-uat-approval
+      retain:
+        - foundation/helm-provider-config
+        - foundation/kubernetes-provider-config
+        - foundation/remote-auth-probe
+      requiredEvidence:
+        eni-residual-count: "0"
+        nodeclaim-count: "0"
+        remote-auth-verified: "true"
+        remote-foundation-resource-count: "0"
+    DeleteReady:
+      inventorySha256: a22f03ef60bb3bd86bafacf72011322d9ef014ed0cda6e4f796f77b2d37ac527
+      remove:
+        - foundation/foundation-uses-cluster
+        - foundation/helm-provider-config
+        - foundation/kubernetes-provider-config
+        - foundation/remote-auth-probe
+      retain:
+        - foundation/retirement-evidence
+      requiredEvidence:
+        cloud-inventory-reviewed: "true"
+        ec2-instance-count: "0"
+        eni-residual-count: "0"
+        native-deletion-protection-disable-approved: "true"
+        nodeclaim-count: "0"
+        remote-foundation-resource-count: "0"

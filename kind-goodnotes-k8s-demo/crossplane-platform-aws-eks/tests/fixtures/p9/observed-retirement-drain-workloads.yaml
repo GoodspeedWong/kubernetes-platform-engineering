@@ -1,0 +1,33 @@
+retirement-evidence:
+  Resource:
+    status:
+      conditions:
+        - type: Ready
+          status: "True"
+          reason: Available
+      atProvider:
+        manifest:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: eks-dev-spot-retirement-evidence
+            namespace: crossplane-system
+            labels:
+              platform.aws.goodnotes.io/environment: eks-dev-spot
+          data:
+            approved: "true"
+            environment-uid: 00000000-0000-4000-8000-000000000002
+            environment-generation: "3"
+            foundation-uid: 00000000-0000-4000-8000-000000000008
+            foundation-generation: "9"
+            from-stage: Active
+            to-stage: DrainWorkloads
+            inventory-sha256: fbb467431d7c826f6f7ef708f05720295713644227bb764df2d29da419b1b3ab
+            run-id: test-only-retirement-001
+            approved-by: arn:aws:iam::000000000000:role/TEST-ONLY-EksLifecycleApprover
+            observed-at: "2026-08-27T00:00:00Z"
+            evidence-sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            application-count: "0"
+            load-balancer-count: "0"
+            finalizers-cleared: "true"
+            persistent-volumes-reviewed: "true"

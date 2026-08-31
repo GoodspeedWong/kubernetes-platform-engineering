@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: eks-lifecycle-stage-approvers.platform.aws.goodnotes.io
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - platform.aws.goodnotes.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - UPDATE
+        resources:
+          - xeksenvironments
+  matchConditions:
+    - name: lifecycle-change
+      expression: object.spec.parameters.lifecycle != oldObject.spec.parameters.lifecycle
+  validations:
+    - expression: request.userInfo.groups.exists(group, group == 'platform-eks-lifecycle-approvers')
+      message: lifecycle changes require the platform-eks-lifecycle-approvers group
+      reason: Forbidden
+    - expression: object.spec.parameters.lifecycle.retirementStage == 'Active' || has(object.spec.parameters.lifecycle.evidenceRef)
+      message: non-Active lifecycle stages require an immutable evidenceRef
+      reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: eks-lifecycle-stage-approvers.platform.aws.goodnotes.io
+spec:
+  policyName: eks-lifecycle-stage-approvers.platform.aws.goodnotes.io
+  validationActions:
+    - Deny

@@ -1,0 +1,10 @@
+apiVersion: kubernetes.crossplane.io/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: eks-lifecycle-evidence
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-bootstrap
+    platform.aws.goodnotes.io/resource-role: lifecycle-evidence-reader
+spec:
+  credentials:
+    source: InjectedIdentity

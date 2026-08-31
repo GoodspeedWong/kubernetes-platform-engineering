@@ -1,0 +1,302 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xeksenvironments.platform.aws.goodnotes.io
+  labels:
+    platform.aws.goodnotes.io/composition-role: aggregate-owner
+    platform.aws.goodnotes.io/revision-review: required
+    platform.aws.goodnotes.io/type: eks-environment
+  annotations:
+    platform.aws.goodnotes.io/implementation-phase: P9
+spec:
+  compositeTypeRef:
+    apiVersion: platform.aws.goodnotes.io/v1alpha1
+    kind: XEKSEnvironment
+  mode: Pipeline
+  pipeline:
+    - step: render-stable-child-owners
+      functionRef:
+        name: function-kcl
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLInput
+        spec:
+          source: |
+            oxr = option("params").oxr
+            ocds = option("params").ocds
+            _dxr = option("params").dxr
+            params = oxr.spec.parameters
+            environment_name = oxr.metadata.name
+            network_name = environment_name + "-network"
+            cluster_name = environment_name + "-cluster"
+            foundation_name = environment_name + "-foundation"
+            management_namespace = "crossplane-system"
+            foundation_gitops_parameters = {gitOps = params.gitOps} if "gitOps" in params else {}
+            environment_uid = oxr.metadata?.uid or ""
+            environment_generation = int(oxr.metadata?.generation or 0)
+            requested_stage = params.lifecycle.retirementStage
+            persisted_approved_stage = oxr.status?.retirement?.approvedStage or "Active"
+            persisted_cleanup_complete = oxr.status?.retirement?.cleanupComplete or False
+            observed_foundation_status = ocds["foundation"].Resource?.status or {} if "foundation" in ocds else {}
+            observed_cluster_status = ocds["cluster"].Resource?.status or {} if "cluster" in ocds else {}
+            approved_stage = observed_foundation_status?.retirement?.approvedStage or persisted_approved_stage
+            cleanup_complete = observed_foundation_status?.retirement?.cleanupComplete or persisted_cleanup_complete
+            release_native_protection = approved_stage == "DeleteReady" and cleanup_complete
+            native_protection_observed_disabled = "deletionProtectionEnabled" in observed_cluster_status and observed_cluster_status.deletionProtectionEnabled == False
+            release_root_protection = release_native_protection and native_protection_observed_disabled
+            cluster_lifecycle = {
+                retirementStage = approved_stage
+                deletionProtection = False if release_native_protection and not params.lifecycle.deletionProtection else True
+            }
+
+            common_labels = {
+                "app.kubernetes.io/part-of" = "crossplane-eks-platform"
+                "platform.aws.goodnotes.io/environment" = environment_name
+                "platform.aws.goodnotes.io/managed-by" = "crossplane"
+            }
+
+            network = {
+                apiVersion = "platform.aws.goodnotes.io/v1alpha1"
+                kind = "XNetwork"
+                metadata = {
+                    name = network_name
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "network"
+                    }
+                    labels = {
+                        **common_labels
+                        "platform.aws.goodnotes.io/layer" = "network"
+                    }
+                }
+                spec = {
+                    crossplane = {
+                        compositionUpdatePolicy = "Manual"
+                    }
+                    parameters = {
+                        cidrBlock = params.network.cidrBlock
+                        deletionPolicy = "Delete"
+                        egress = {
+                            mode = "SingleNAT"
+                        }
+                        environmentRef = {
+                            kind = "XEKSEnvironment"
+                            name = environment_name
+                        }
+                        networkClass = "application"
+                        privateSubnets = params.network.privateSubnets
+                        providerConfigRef = params.providerConfigRef
+                        publicSubnets = params.network.publicSubnets
+                        region = params.region
+                    }
+                }
+            }
+
+            cluster = {
+                apiVersion = "platform.aws.goodnotes.io/v1alpha1"
+                kind = "XEKSCluster"
+                metadata = {
+                    name = cluster_name
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "cluster"
+                    }
+                    labels = {
+                        **common_labels
+                        "platform.aws.goodnotes.io/layer" = "cluster"
+                    }
+                }
+                spec = {
+                    crossplane = {
+                        compositionUpdatePolicy = "Manual"
+                    }
+                    parameters = {
+                        access = params.access
+                        environmentRef = {
+                            kind = "XEKSEnvironment"
+                            name = environment_name
+                        }
+                        kubernetesVersion = params.kubernetesVersion
+                        lifecycle = cluster_lifecycle
+                        managementNamespace = management_namespace
+                        networkRef = {
+                            kind = "XNetwork"
+                            name = network_name
+                        }
+                        nodeImageRef = params.nodeImageRef
+                        platformReleaseRef = params.platformReleaseRef
+                        providerConfigRef = params.providerConfigRef
+                        region = params.region
+                    }
+                }
+            }
+
+            foundation = {
+                apiVersion = "platform.aws.goodnotes.io/v1alpha1"
+                kind = "XClusterFoundation"
+                metadata = {
+                    name = foundation_name
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "foundation"
+                    }
+                    labels = {
+                        **common_labels
+                        "platform.aws.goodnotes.io/layer" = "foundation"
+                    }
+                }
+                spec = {
+                    crossplane = {
+                        compositionUpdatePolicy = "Manual"
+                    }
+                    parameters = {
+                        availabilityZones = [
+                            params.network.privateSubnets.a.availabilityZone,
+                            params.network.privateSubnets.b.availabilityZone,
+                        ]
+                        clusterRef = {
+                            kind = "XEKSCluster"
+                            name = cluster_name
+                        }
+                        compute = params.compute
+                        **foundation_gitops_parameters
+                        environmentRef = {
+                            kind = "XEKSEnvironment"
+                            name = environment_name
+                        }
+                        environmentIdentity = {
+                            uid = environment_uid
+                            generation = environment_generation
+                        }
+                        kubernetesVersion = params.kubernetesVersion
+                        lifecycle = params.lifecycle
+                        managementNamespace = management_namespace
+                        nativeRoutingCIDR = params.network.cidrBlock
+                        nodeImageRef = params.nodeImageRef
+                        platformReleaseRef = params.platformReleaseRef
+                        providerConfigRef = params.providerConfigRef
+                        region = params.region
+                    }
+                }
+            }
+
+            _dxr.status = _dxr.status or {}
+            _dxr.status.references = {
+                networkRef = {
+                    kind = "XNetwork"
+                    name = network_name
+                }
+                clusterRef = {
+                    kind = "XEKSCluster"
+                    name = cluster_name
+                }
+                foundationRef = {
+                    kind = "XClusterFoundation"
+                    name = foundation_name
+                }
+            }
+            _dxr.status.actualVersions = _dxr.status?.actualVersions or {}
+            _dxr.status.retirement = {
+                requestedStage = requested_stage
+                approvedStage = approved_stage
+                cleanupComplete = cleanup_complete
+                evidenceAccepted = observed_foundation_status?.retirement?.evidenceAccepted or False
+            }
+
+            if "cluster" in ocds:
+                if observed_cluster_status?.clusterName:
+                    _dxr.status.clusterName = observed_cluster_status.clusterName
+                if observed_cluster_status?.endpoint:
+                    _dxr.status.endpoint = observed_cluster_status.endpoint
+                if observed_cluster_status?.actualVersions?.controlPlane:
+                    _dxr.status.actualVersions.controlPlane = observed_cluster_status.actualVersions.controlPlane
+                if observed_cluster_status?.actualVersions?.coreDNSAddon:
+                    _dxr.status.actualVersions.coreDNSAddon = observed_cluster_status.actualVersions.coreDNSAddon
+
+            if "foundation" in ocds:
+                if observed_foundation_status?.actualVersions?.cilium:
+                    _dxr.status.actualVersions.cilium = observed_foundation_status.actualVersions.cilium
+                if observed_foundation_status?.actualVersions?.karpenter:
+                    _dxr.status.actualVersions.karpenter = observed_foundation_status.actualVersions.karpenter
+                if observed_foundation_status?.actualVersions?.argoCD:
+                    _dxr.status.actualVersions.argoCD = observed_foundation_status.actualVersions.argoCD
+                if observed_foundation_status?.actualVersions?.nodeImage:
+                    _dxr.status.actualVersions.nodeImage = observed_foundation_status.actualVersions.nodeImage
+
+            root_deletion_protection = {
+                apiVersion = "protection.crossplane.io/v1beta1"
+                kind = "ClusterUsage"
+                metadata = {
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "root-deletion-protection"
+                    }
+                    labels = {
+                        **common_labels
+                        "platform.aws.goodnotes.io/resource-role" = "root-deletion-protection"
+                    }
+                }
+                spec = {
+                    replayDeletion = False
+                    reason = "Retire the foundation through every evidence-gated stage before deleting the root environment."
+                    by = {
+                        apiVersion = "platform.aws.goodnotes.io/v1alpha1"
+                        kind = "XClusterFoundation"
+                        resourceRef = {name = foundation_name}
+                    }
+                    of = {
+                        apiVersion = "platform.aws.goodnotes.io/v1alpha1"
+                        kind = "XEKSEnvironment"
+                        resourceRef = {name = environment_name}
+                    }
+                }
+            }
+            root_protection_resources = [] if release_root_protection else [root_deletion_protection]
+
+            conditions = {
+                apiVersion = "meta.krm.kcl.dev/v1alpha1"
+                kind = "Conditions"
+                conditions = [
+                    {
+                        target = "Composite"
+                        force = False
+                        condition = {
+                            type = "InfrastructureReady"
+                            status = "False"
+                            reason = "WaitingForCluster"
+                            message = "Network and cluster infrastructure have not reported readiness."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = False
+                        condition = {
+                            type = "FoundationReady"
+                            status = "False"
+                            reason = "WaitingForFoundation"
+                            message = "Cluster foundation components have not reported readiness."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = False
+                        condition = {
+                            type = "RuntimeNetworkUAT"
+                            status = "Unknown"
+                            reason = "RequiresAWSUAT"
+                            message = "Foundation readiness never substitutes for real AWS network UAT."
+                        }
+                    },
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "RetirementGateReady"
+                            status = "True" if release_root_protection else "False"
+                            reason = "DeleteReady" if release_root_protection else ("WaitingForNativeProtectionObservation" if release_native_protection else ("EvidencePending" if requested_stage != approved_stage else "Protected"))
+                            message = "The foundation cleanup is complete and the managed EKS resource reports native deletion protection disabled; root protection is released." if release_root_protection else ("The desired EKS setting is disabled, but root protection remains until the provider observes that AWS accepted the change." if release_native_protection else "Root deletion remains protected until the requested retirement stage is externally evidenced and foundation cleanup is complete.")
+                        }
+                    }
+                ]
+            }
+
+            items = [network, cluster, foundation, *root_protection_resources, conditions, _dxr]
+    - step: automatically-detect-ready-child-owners
+      functionRef:
+        name: function-auto-ready

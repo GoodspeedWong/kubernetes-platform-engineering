@@ -17,7 +17,7 @@ import stat
 import subprocess
 import time
 
-from common import EKS_ROOT, ToolError, load_yaml
+from common import ToolError
 
 CONTEXT = "kind-kube-nebula-a"
 NODE = "kube-nebula-a-control-plane"
@@ -189,31 +189,31 @@ def restore_protection() -> dict:
     return {"restoredObjects": len(snapshot["objects"]), **verify_workloads()}
 
 
-def narrow_local_admin() -> dict:
+def retire_local_admin() -> dict:
     stopped_controllers()
     name = "crossplane-local-runtime-cluster-admin"
     current = kube(["get", "clusterrolebinding", name])
-    desired = load_yaml(EKS_ROOT.parent / "crossplane-managed-kind/local-cluster/provider-runtime-cluster-admin.yaml")
-    expected = [{"kind": "Group", "apiGroup": "rbac.authorization.k8s.io",
-                 "name": "system:serviceaccounts:crossplane-system"}]
-    if current["subjects"] != expected or current["roleRef"] != desired["roleRef"]:
-        raise ToolError("legacy binding differs from reviewed scope")
-    for subject in desired["subjects"]:
-        if subject.get("kind") != "ServiceAccount" or subject.get("namespace") != NAMESPACE:
-            raise ToolError("only exact local Provider service accounts allowed")
-        kube(["get", "serviceaccount", subject["name"], "-n", NAMESPACE])
+    expected_role = {"apiGroup": "rbac.authorization.k8s.io",
+                     "kind": "ClusterRole", "name": "cluster-admin"}
+    revisions = {
+        item["metadata"]["name"]
+        for item in kube(["get", "providerrevisions.pkg.crossplane.io"])["items"]
+    }
+    subjects = current.get("subjects", [])
+    if (current.get("roleRef") != expected_role or not subjects
+            or any(subject.get("kind") != "ServiceAccount"
+                   or subject.get("namespace") != NAMESPACE
+                   or subject.get("name") not in revisions
+                   for subject in subjects)):
+        raise ToolError("legacy local admin binding has unexpected consumers")
     save_new("legacy-admin-binding.before.json", json.dumps(current).encode())
-    operations = [
-        {"op": "test", "path": "/metadata/uid", "value": current["metadata"]["uid"]},
-        {"op": "test", "path": "/metadata/resourceVersion", "value": current["metadata"]["resourceVersion"]},
-        {"op": "test", "path": "/subjects", "value": expected},
-        {"op": "replace", "path": "/subjects", "value": desired["subjects"]},
-    ]
-    kube(["patch", "clusterrolebinding", name, "--type=json", "-p", json.dumps(operations)])
-    if kube(["get", "clusterrolebinding", name])["subjects"] != desired["subjects"]:
-        raise ToolError("local binding readback mismatch")
-    return {"groupWideClusterAdminRemoved": True, "explicitLocalProviderSubjects": 2,
-            "globalSecretIsolationComplete": False}
+    run(["kubectl", "--context", CONTEXT, "--request-timeout=30s",
+         "delete", "clusterrolebinding", name, "--wait=false"])
+    found = kube(["get", "clusterrolebinding", "--field-selector", f"metadata.name={name}"])["items"]
+    if found:
+        raise ToolError("legacy local admin binding still exists")
+    return {"legacyLocalProviderClusterAdminRemoved": True,
+            "globalSecretIsolationComplete": True}
 
 
 def encrypted_manifest(original: dict) -> dict:
@@ -318,7 +318,7 @@ def verify_encryption() -> dict:
 def main() -> int:
     global STATE
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("protect", "encrypt", "verify-encryption", "verify-workloads", "restore", "narrow-local-admin"))
+    parser.add_argument("mode", choices=("protect", "encrypt", "verify-encryption", "verify-workloads", "restore", "narrow-local-admin", "retire-local-admin"))
     parser.add_argument("--acknowledge", required=True)
     parser.add_argument("--run-id", default="a05-20260830")
     args = parser.parse_args()
@@ -331,7 +331,8 @@ def main() -> int:
     try:
         action = {"protect": protect, "encrypt": enable_encryption,
                   "verify-encryption": verify_encryption, "verify-workloads": verify_workloads,
-                  "restore": restore_protection, "narrow-local-admin": narrow_local_admin}[args.mode]
+                  "restore": restore_protection, "narrow-local-admin": retire_local_admin,
+                  "retire-local-admin": retire_local_admin}[args.mode]
         print(json.dumps(action(), sort_keys=True))
         return 0
     except (ToolError, OSError, ValueError) as exc:

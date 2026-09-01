@@ -77,13 +77,14 @@ class ManagementHardeningTests(unittest.TestCase):
         self.assertEqual(["remove", "remove"], [entry["op"] for entry in result[2:]])
         self.assertNotIn("do-not-copy", str(result))
 
-    def test_local_admin_binding_has_no_serviceaccount_group(self):
-        binding = load_yaml(EKS_ROOT.parent / "crossplane-managed-kind/local-cluster/provider-runtime-cluster-admin.yaml")
-        subjects = binding["subjects"]
-        self.assertEqual(2, len(subjects))
-        self.assertTrue(all(s["kind"] == "ServiceAccount" for s in subjects))
-        self.assertTrue(all(s["namespace"] == hardening.NAMESPACE for s in subjects))
-        self.assertTrue(all(s["name"].startswith(("provider-helm-", "provider-kubernetes-")) for s in subjects))
+    def test_provider_cluster_admin_manifest_is_an_empty_tombstone(self):
+        root = EKS_ROOT.parent / "crossplane-managed-kind/local-cluster"
+        document = load_yaml(root / "provider-runtime-cluster-admin.yaml")
+        self.assertEqual("ClusterRole", document["kind"])
+        self.assertEqual([], document["rules"])
+        self.assertNotIn("subjects", document)
+        self.assertNotIn("roleRef", document)
+        self.assertNotEqual("crossplane-local-runtime-cluster-admin", document["metadata"]["name"])
 
     def test_private_state_is_exclusive_and_rejects_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:

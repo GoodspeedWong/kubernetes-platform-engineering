@@ -1,18 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: ClusterRole
 metadata:
-  name: crossplane-local-runtime-cluster-admin
-subjects:
-  # Only these existing local-target controllers retain this legacy capability.
-  # Never grant cluster-admin to the entire crossplane-system SA group.
-  # Review/update the Helm subject when its pinned revision changes.
-  - kind: ServiceAccount
-    name: provider-kubernetes-f6665ef36536
-    namespace: crossplane-system
-  - kind: ServiceAccount
-    name: provider-helm-20a901f62fa8
-    namespace: crossplane-system
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cluster-admin
+  name: crossplane-local-runtime-cluster-admin-retired
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-rbac-operator
+# Tombstone for the former cluster-admin binding. Provider permissions are
+# maintained explicitly by crossplane-platform-aws-eks/management-rbac.
+rules: []

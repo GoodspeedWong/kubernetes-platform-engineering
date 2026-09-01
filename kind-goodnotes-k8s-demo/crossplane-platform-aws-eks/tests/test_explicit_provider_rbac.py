@@ -112,7 +112,8 @@ class ExplicitProviderRBACTests(unittest.TestCase):
 
     def test_retirement_is_exact_and_never_targets_business_resources(self):
         targets = rbac.retired_targets(self.contract)
-        self.assertEqual(24, len(targets))
+        self.assertEqual(25, len(targets))
+        self.assertIn(("clusterrolebinding", rbac.LEGACY_LOCAL_ADMIN, None), targets)
         self.assertTrue(all(ns in (None, rbac.NS) for _, _, ns in targets))
         self.assertTrue(all(kind in {"clusterrole", "clusterrolebinding", "deployment", "serviceaccount"} for kind, _, _ in targets))
         self.assertEqual(1, sum(kind == "deployment" for kind, _, _ in targets))
@@ -134,6 +135,42 @@ class ExplicitProviderRBACTests(unittest.TestCase):
         for status in ({}, {"allowed": False, "evaluationError": "incomplete"}):
             with patch.object(rbac.maintenance, "kube", return_value={"status": status}), self.assertRaises(ToolError):
                 rbac.can_i("test-account", "get", "secrets")
+
+    def test_remote_providers_never_require_local_admin_permissions(self):
+        with patch.object(rbac, "verify_inventory"), patch.object(
+            rbac, "retired_targets", return_value=[]
+        ), patch.object(rbac, "render", return_value=[]), patch.object(
+            rbac.maintenance, "kube", return_value={"aggregationRule": None}
+        ), patch.object(rbac, "can_i") as can_i:
+            service_by_account = {
+                p["revision"]: p["service"] for p in self.contract["providers"]
+            }
+
+            def allowed(_account, verb, resource, _namespace=rbac.NS, name="", _group=""):
+                if resource == "leases" and verb == "create":
+                    return True
+                if resource == "secrets" and name == rbac.SESSION:
+                    return _account in {
+                        p["revision"] for p in self.contract["providers"] if p["sessionReader"]
+                    }
+                if resource == "clusters" and verb == "patch":
+                    return service_by_account[_account] == "eks"
+                if resource == "providerconfigs" and verb == "patch":
+                    return service_by_account[_account] == "aws"
+                return False
+
+            can_i.side_effect = allowed
+            result = rbac.audit(self.contract)
+        self.assertEqual(89, result["authorizationChecksPassed"])
+        called = {call.args for call in can_i.call_args_list}
+        for provider in self.contract["providers"]:
+            if provider["service"] not in {"helm", "kubernetes"}:
+                continue
+            account = provider["revision"]
+            self.assertIn(
+                (account, "patch", "clusterrolebindings", "", "test-only", "rbac.authorization.k8s.io"),
+                called,
+            )
 
 
 if __name__ == "__main__":

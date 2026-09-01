@@ -14,6 +14,7 @@ ROOT = EKS_ROOT / "management-rbac"
 MAINTENANCE_ROOT = EKS_ROOT / "management-rbac-maintenance"
 NS = "crossplane-system"
 SESSION = "eks-platform-aws-session"
+LEGACY_LOCAL_ADMIN = "crossplane-local-runtime-cluster-admin"
 ACK = "I-APPROVE-EXPLICIT-PROVIDER-RBAC"
 LABELS = {"platform.aws.goodnotes.io/managed-by": "platform-rbac-operator"}
 READ = ["get", "list", "watch"]
@@ -219,7 +220,8 @@ def retired_targets(contract: dict) -> list[tuple[str, str, str | None]]:
     result = [("deployment", "crossplane-rbac-manager", NS),
               ("clusterrolebinding", "crossplane-rbac-manager", None),
               ("clusterrole", "crossplane-rbac-manager", None),
-              ("serviceaccount", "rbac-manager", NS)]
+              ("serviceaccount", "rbac-manager", NS),
+              ("clusterrolebinding", LEGACY_LOCAL_ADMIN, None)]
     for provider in contract["providers"]:
         name = "crossplane:provider:" + provider["revision"] + ":system"
         result.extend([("clusterrolebinding", name, None), ("clusterrole", name, None)])
@@ -263,14 +265,13 @@ def audit(contract: dict, *, permission_probes: bool = True) -> dict:
     count = 0
     for provider in contract["providers"]:
         account, service = provider["revision"], provider["service"]
-        local = service in {"helm", "kubernetes"}
         probes = [
-            ("get", "secrets", NS, SESSION, "", provider["sessionReader"] or local),
-            ("get", "secrets", NS, "unreviewed-secret", "", local),
-            ("list", "secrets", NS, "", "", local),
-            ("create", "deployments", NS, "", "apps", local),
-            ("create", "serviceaccounts/token", NS, "crossplane", "", local),
-            ("patch", "clusterrolebindings", "", "test-only", "rbac.authorization.k8s.io", local),
+            ("get", "secrets", NS, SESSION, "", provider["sessionReader"]),
+            ("get", "secrets", NS, "unreviewed-secret", "", False),
+            ("list", "secrets", NS, "", "", False),
+            ("create", "deployments", NS, "", "apps", False),
+            ("create", "serviceaccounts/token", NS, "crossplane", "", False),
+            ("patch", "clusterrolebindings", "", "test-only", "rbac.authorization.k8s.io", False),
             ("create", "leases", NS, "", "coordination.k8s.io", True),
         ]
         if service in AWS_SERVICES:
@@ -309,6 +310,10 @@ def migrate(contract: dict) -> dict:
         if existing:
             raise ToolError("explicit RBAC target already exists; refusing first-time takeover")
     backup = []
+    revision_names = {
+        item["metadata"]["name"]
+        for item in maintenance.kube(["get", "providerrevisions.pkg.crossplane.io"])["items"]
+    }
     for resource, name, namespace in targets:
         options = ["-n", namespace] if namespace else []
         obj = maintenance.kube(["get", resource, name, *options])
@@ -320,6 +325,24 @@ def migrate(contract: dict) -> dict:
                 "kind": "ServiceAccount", "name": revision, "namespace": NS
             }]:
                 raise ToolError("legacy binding has additional consumers")
+        if name == LEGACY_LOCAL_ADMIN:
+            expected_role = {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "ClusterRole",
+                "name": "cluster-admin",
+            }
+            subjects = obj.get("subjects", [])
+            if (
+                obj.get("roleRef") != expected_role
+                or not subjects
+                or any(
+                    subject.get("kind") != "ServiceAccount"
+                    or subject.get("namespace") != NS
+                    or subject.get("name") not in revision_names
+                    for subject in subjects
+                )
+            ):
+                raise ToolError("legacy local admin binding has unexpected consumers")
         backup.append(obj)
     backup.append(maintenance.kube(["get", "clusterrole", "crossplane"]))
     maintenance.save_new("rbac-migration.before.json", json.dumps(backup).encode())

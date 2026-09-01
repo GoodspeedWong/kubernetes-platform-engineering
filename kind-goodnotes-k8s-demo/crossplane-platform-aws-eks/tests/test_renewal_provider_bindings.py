@@ -10,22 +10,29 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/eks_lifecycle"))
 
 import renew_management_credentials as renewal
+import provider_maintenance
 from common import EKS_ROOT, ToolError, load_yaml
 from test_security_remediation import contract, session
 
 
 class RenewalProviderBindingsTests(unittest.TestCase):
     def test_names_match_existing_and_dependency_provider_manifests(self):
-        shared = EKS_ROOT.parent / "crossplane-provider-aws"
-        names = {"provider-helm", "provider-kubernetes"}
-        for service in ("ec2", "eks", "iam"):
-            provider = load_yaml(shared / f"provider-aws-{service}.yaml")
-            names.add(provider["metadata"]["name"])
+        reviewed = provider_maintenance.contract()
+        names = {
+            provider["name"]
+            for provider in reviewed["providers"]
+            if provider["runtimeConfig"] != "default"
+        }
+        expected = {
+            provider["metadata"]["name"]: provider
+            for provider in provider_maintenance.provider_documents(reviewed)
+        }
         for service in ("sqs", "cloudwatchevents"):
             provider = load_yaml(
                 EKS_ROOT / "dependencies" / f"provider-aws-{service}.yaml"
             )
-            names.add(provider["metadata"]["name"])
+            self.assertIn(provider["metadata"]["name"], names)
+            self.assertEqual(expected[provider["metadata"]["name"]], provider)
         self.assertEqual(7, len(renewal.PROVIDERS))
         self.assertEqual(names, set(renewal.PROVIDERS))
 

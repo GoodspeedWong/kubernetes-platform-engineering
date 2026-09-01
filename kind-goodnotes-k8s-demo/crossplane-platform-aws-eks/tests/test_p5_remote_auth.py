@@ -19,6 +19,7 @@ sys.path.insert(0, str(SCRIPT_ROOT))
 
 import common  # noqa: E402
 import preflight  # noqa: E402
+import provider_maintenance  # noqa: E402
 import render_cluster  # noqa: E402
 import render_foundation  # noqa: E402
 
@@ -331,37 +332,53 @@ class P5RemoteAuthenticationTests(unittest.TestCase):
         )
         self.assertEqual(0, rendered.returncode, rendered.stderr)
         documents = self._load_yaml_documents(rendered.stdout)
-        self.assertEqual(4, len(documents))
+        self.assertEqual(12, len(documents))
         self.assertNotIn("Secret", {item["kind"] for item in documents})
 
         lock = common.load_yaml(EKS_ROOT / "versions.lock.yaml")
+        reviewed = provider_maintenance.contract(lock)
         providers = {
             item["metadata"]["name"]: item
             for item in documents
             if item["kind"] == "Provider"
         }
-        self.assertEqual({"provider-kubernetes", "provider-helm"}, set(providers))
-        self.assertEqual(
-            lock["packages"]["providerKubernetes"]["reference"],
-            providers["provider-kubernetes"]["spec"]["package"],
-        )
-        self.assertEqual(
-            lock["packages"]["providerHelm"]["reference"],
-            providers["provider-helm"]["spec"]["package"],
-        )
-        for provider in providers.values():
+        expected = {
+            item["metadata"]["name"]: item
+            for item in provider_maintenance.provider_documents(reviewed)
+        }
+        self.assertEqual(expected, providers)
+        session_consumers = {
+            provider["name"]
+            for provider in reviewed["providers"]
+            if provider["runtimeConfig"] != "default"
+        }
+        self.assertEqual(7, len(session_consumers))
+        for provider in reviewed["providers"]:
             self.assertEqual(
                 {
                     "apiVersion": "pkg.crossplane.io/v1beta1",
                     "kind": "DeploymentRuntimeConfig",
-                    "name": "eks-remote-auth",
+                    "name": provider["runtimeConfig"],
                 },
-                provider["spec"]["runtimeConfigRef"],
+                providers[provider["name"]]["spec"]["runtimeConfigRef"],
             )
 
-        runtime = next(
-            item for item in documents if item["kind"] == "DeploymentRuntimeConfig"
-            and item["metadata"]["name"] == "eks-remote-auth"
+        runtimes = {
+            item["metadata"]["name"]: item
+            for item in documents
+            if item["kind"] == "DeploymentRuntimeConfig"
+        }
+        self.assertEqual({"eks-aws-session", "eks-remote-auth"}, set(runtimes))
+        runtime = runtimes["eks-remote-auth"]
+        aws_runtime = runtimes["eks-aws-session"]
+        self.assertEqual(
+            [{"name": "AWS_EC2_METADATA_DISABLED", "value": "true"}],
+            aws_runtime["spec"]["deploymentTemplate"]["spec"]["template"]["spec"]
+            ["containers"][0]["env"],
+        )
+        self.assertNotIn(
+            "volumes",
+            aws_runtime["spec"]["deploymentTemplate"]["spec"]["template"]["spec"],
         )
         pod_spec = runtime["spec"]["deploymentTemplate"]["spec"]["template"][
             "spec"

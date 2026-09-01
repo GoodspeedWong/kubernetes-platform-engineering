@@ -4,6 +4,16 @@ metadata:
   name: upbound-provider-aws-cloudwatchevents
   annotations:
     platform.aws.goodnotes.io/version: v2.5.3
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-bootstrap
+    platform.aws.goodnotes.io/resource-role: on-demand-session-provider
+    platform.aws.goodnotes.io/session-consumer: "true"
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-cloudwatchevents@sha256:5266e756ac5083a00c270e6aa1d56f98db6b771c0581ddf055a0dcd9eadbb3d9
+  packagePullPolicy: IfNotPresent
   revisionActivationPolicy: Automatic
+  revisionHistoryLimit: 2
+  runtimeConfigRef:
+    apiVersion: pkg.crossplane.io/v1beta1
+    kind: DeploymentRuntimeConfig
+    name: eks-aws-session

@@ -4,6 +4,16 @@ metadata:
   name: upbound-provider-aws-sqs
   annotations:
     platform.aws.goodnotes.io/version: v2.5.3
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-bootstrap
+    platform.aws.goodnotes.io/resource-role: on-demand-session-provider
+    platform.aws.goodnotes.io/session-consumer: "true"
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-sqs@sha256:73f0d8415ea7be785446b924e47b67a4fa39c0927f4c79ed4d6b90893a97d56e
+  packagePullPolicy: IfNotPresent
   revisionActivationPolicy: Automatic
+  revisionHistoryLimit: 2
+  runtimeConfigRef:
+    apiVersion: pkg.crossplane.io/v1beta1
+    kind: DeploymentRuntimeConfig
+    name: eks-aws-session

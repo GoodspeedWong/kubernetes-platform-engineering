@@ -19,6 +19,7 @@ import validate_spot_contract
 import validate_chart_digests
 import prepare_identity_boundaries
 import manage_provider_rbac
+import provider_maintenance
 import renew_management_credentials
 
 
@@ -63,8 +64,17 @@ def run_validation(strict: bool, report_directory: Path) -> dict[str, object]:
     run_checked([sys.executable, str(schema_script), "--verify"])
     prepare_identity_boundaries.check_template()
     rbac_inventory = manage_provider_rbac.inventory()
-    if (manage_provider_rbac.ROOT / "permissions.yaml").read_bytes() != manage_provider_rbac.rendered_bytes(rbac_inventory):
+    if (
+        (manage_provider_rbac.ROOT / "permissions.yaml").read_bytes()
+        != manage_provider_rbac.rendered_bytes(rbac_inventory)
+    ):
         raise ToolError("explicit Provider RBAC differs from inventory")
+    provider_contract = provider_maintenance.contract(lock)
+    if (
+        provider_maintenance.PROVIDERS_FILE.read_bytes()
+        != provider_maintenance.rendered_bytes(provider_contract)
+    ):
+        raise ToolError("management Provider bundle differs from inventory")
     if load_yaml(EKS_ROOT.parent / "crossplane/values.yaml").get("rbacManager", {}).get("deploy") is not False:
         raise ToolError("automatic RBAC manager must remain disabled")
     direct = load_yaml(EKS_ROOT / "management-aws-auth/provider-config.template.yaml")["spec"]
@@ -196,6 +206,14 @@ def run_validation(strict: bool, report_directory: Path) -> dict[str, object]:
         "sensitiveLiterals": 0,
         "identityBoundaryPolicies": 7,
         "explicitProviderRbacDocuments": len(manage_provider_rbac.render(rbac_inventory)),
+        "managementProviders": len(provider_contract["providers"]),
+        "managementSessionConsumers": sum(
+            provider["runtimeConfig"] != manage_provider_rbac.RUNTIME_DEFAULT
+            for provider in provider_contract["providers"]
+        ),
+        "managementSessionSecretReaders": sum(
+            provider["sessionReader"] for provider in provider_contract["providers"]
+        ),
         "automaticRbacManagerDisabled": True,
         "managementSessionMode": renew_management_credentials.SESSION_MODE,
         "managementAutomaticRenewal": False,

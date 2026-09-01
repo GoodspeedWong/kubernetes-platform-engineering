@@ -19,6 +19,7 @@ from common import (
     require_tool,
     run_checked,
 )
+import provider_maintenance
 
 
 REQUIRED_LOCAL_TOOLS = ("python3", "crossplane", "helm", "kubectl", "yq")
@@ -63,20 +64,13 @@ def validate_management_auth_bundle(lock: dict[str, Any]) -> dict[str, object]:
         for item in providers
         if isinstance(item, dict) and item.get("kind") == "Provider"
     }
-    if set(by_name) != set(REMOTE_AUTH_PROVIDERS):
-        raise ToolError("management-auth must contain exactly the two remote providers")
-    for provider_name, lock_key in REMOTE_AUTH_PROVIDERS.items():
-        provider = by_name[provider_name]
-        expected_package = lock["packages"][lock_key]["reference"]
-        if provider.get("spec", {}).get("package") != expected_package:
-            raise ToolError(f"{provider_name} package does not match versions.lock.yaml")
-        runtime_name = (
-            provider.get("spec", {}).get("runtimeConfigRef", {}).get("name")
-        )
-        if runtime_name != REMOTE_AUTH_RUNTIME_CONFIG:
-            raise ToolError(
-                f"{provider_name} must use {REMOTE_AUTH_RUNTIME_CONFIG} runtime config"
-            )
+    reviewed = provider_maintenance.contract(lock)
+    expected_by_name = {
+        item["metadata"]["name"]: item
+        for item in provider_maintenance.provider_documents(reviewed)
+    }
+    if by_name != expected_by_name:
+        raise ToolError("management-auth Providers differ from the reviewed maintenance inventory")
 
     runtime = load_yaml(auth_root / "runtime-config.yaml")
     if runtime.get("kind") != "DeploymentRuntimeConfig":
@@ -103,9 +97,41 @@ def validate_management_auth_bundle(lock: dict[str, Any]) -> dict[str, object]:
         "config",
     }:
         raise ToolError("management-auth credential Secret keys are incomplete")
+
+    aws_runtime = load_yaml(auth_root / "aws-session-runtime.yaml")
+    if (
+        aws_runtime.get("kind") != "DeploymentRuntimeConfig"
+        or aws_runtime.get("metadata", {}).get("name") != "eks-aws-session"
+    ):
+        raise ToolError("management-auth AWS runtime identity is invalid")
+    aws_pod_spec = (
+        aws_runtime.get("spec", {})
+        .get("deploymentTemplate", {})
+        .get("spec", {})
+        .get("template", {})
+        .get("spec", {})
+    )
+    aws_containers = aws_pod_spec.get("containers", [])
+    if len(aws_containers) != 1 or aws_containers[0].get("name") != "package-runtime":
+        raise ToolError("management-auth AWS runtime must patch only package-runtime")
+    aws_env = {
+        item.get("name"): item.get("value")
+        for item in aws_containers[0].get("env", [])
+    }
+    if aws_env != {"AWS_EC2_METADATA_DISABLED": "true"}:
+        raise ToolError("management-auth AWS runtime permits an unreviewed credential source")
+    if aws_pod_spec.get("volumes") or aws_containers[0].get("volumeMounts"):
+        raise ToolError("AWS Provider runtime must not mount source or target credentials")
+
+    session_consumers = [
+        provider["name"]
+        for provider in reviewed["providers"]
+        if provider["runtimeConfig"] != "default"
+    ]
     return {
         "providers": sorted(by_name),
-        "runtimeConfig": REMOTE_AUTH_RUNTIME_CONFIG,
+        "runtimeConfigs": ["eks-aws-session", REMOTE_AUTH_RUNTIME_CONFIG],
+        "sessionConsumers": sorted(session_consumers),
         "credentialSecretValuesRead": False,
     }
 

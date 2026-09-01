@@ -44,6 +44,21 @@ class ProviderMaintenanceTests(unittest.TestCase):
         self.assertEqual(5, len(readers))
         self.assertTrue(readers < consumers)
 
+    def test_aws_service_packages_use_the_explicit_family_provider(self):
+        by_name = {
+            item["metadata"]["name"]: item for item in self.providers
+        }
+        service_names = {
+            item["name"]
+            for item in self.reviewed["providers"]
+            if item["service"] in maintenance.rbac.AWS_SERVICES - {"aws"}
+        }
+        self.assertEqual(7, len(service_names))
+        for name in service_names:
+            self.assertTrue(by_name[name]["spec"]["skipDependencyResolution"])
+        for name in set(by_name) - service_names:
+            self.assertNotIn("skipDependencyResolution", by_name[name]["spec"])
+
     def test_rendered_provider_file_matches_inventory(self):
         self.assertEqual(
             maintenance.rendered_bytes(self.reviewed),
@@ -93,6 +108,7 @@ class ProviderMaintenanceTests(unittest.TestCase):
         self.assertEqual(10, plan["providerCount"])
         self.assertEqual(7, plan["sessionConsumerCount"])
         self.assertEqual(5, plan["sessionSecretReaderCount"])
+        self.assertEqual(7, plan["manualAwsFamilyDependencyCount"])
         for key in (
             "awsMutation",
             "kubernetesMutation",

@@ -47,7 +47,7 @@ def provider_documents(reviewed: dict) -> list[dict]:
     documents = []
     for provider in reviewed["providers"]:
         session_consumer = provider["runtimeConfig"] != rbac.RUNTIME_DEFAULT
-        documents.append({
+        document = {
             "apiVersion": "pkg.crossplane.io/v1",
             "kind": "Provider",
             "metadata": {
@@ -72,7 +72,15 @@ def provider_documents(reviewed: dict) -> list[dict]:
                     "name": provider["runtimeConfig"],
                 },
             },
-        })
+        }
+        # AWS service packages declare a semantic-version dependency on the
+        # family provider. The family is deliberately installed and pinned by
+        # digest as a separate reviewed Provider, so digest-only dependency
+        # resolution cannot compare the two identifiers. Keep every package
+        # immutable and bypass only that redundant resolver step.
+        if provider["service"] in rbac.AWS_SERVICES - {"aws"}:
+            document["spec"]["skipDependencyResolution"] = True
+        documents.append(document)
     return documents
 
 
@@ -114,6 +122,9 @@ def public_plan(reviewed: dict) -> dict:
         "sessionSecretReaderCount": sum(p["sessionReader"] for p in providers),
         "runtimeBindings": {p["name"]: p["runtimeConfig"] for p in providers},
         "packageDigestsPinned": True,
+        "manualAwsFamilyDependencyCount": sum(
+            p["service"] in rbac.AWS_SERVICES - {"aws"} for p in providers
+        ),
         "awsMutation": False,
         "kubernetesMutation": False,
         "startsControllers": False,

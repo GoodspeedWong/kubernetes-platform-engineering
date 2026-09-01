@@ -185,6 +185,128 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
+  name: eks-platform-provider-sqs
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-rbac-operator
+rules:
+  - apiGroups:
+      - sqs.aws.upbound.io
+      - sqs.aws.m.upbound.io
+    resources:
+      - '*'
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - aws.upbound.io
+      - aws.m.upbound.io
+    resources:
+      - providerconfigs
+      - clusterproviderconfigs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - aws.upbound.io
+      - aws.m.upbound.io
+    resources:
+      - providerconfigusages
+      - providerconfigusages/status
+      - providerconfigusages/finalizers
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eks-platform-provider-sqs
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-rbac-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: eks-platform-provider-sqs
+subjects:
+  - kind: ServiceAccount
+    name: upbound-provider-aws-sqs-73f0d8415ea7
+    namespace: crossplane-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eks-platform-provider-cloudwatchevents
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-rbac-operator
+rules:
+  - apiGroups:
+      - cloudwatchevents.aws.upbound.io
+      - cloudwatchevents.aws.m.upbound.io
+    resources:
+      - '*'
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - aws.upbound.io
+      - aws.m.upbound.io
+    resources:
+      - providerconfigs
+      - clusterproviderconfigs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - aws.upbound.io
+      - aws.m.upbound.io
+    resources:
+      - providerconfigusages
+      - providerconfigusages/status
+      - providerconfigusages/finalizers
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eks-platform-provider-cloudwatchevents
+  labels:
+    platform.aws.goodnotes.io/managed-by: platform-rbac-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: eks-platform-provider-cloudwatchevents
+subjects:
+  - kind: ServiceAccount
+    name: upbound-provider-aws-cloudwatchevents-5266e756ac50
+    namespace: crossplane-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
   name: eks-platform-provider-rds
   labels:
     platform.aws.goodnotes.io/managed-by: platform-rbac-operator
@@ -409,7 +531,7 @@ roleRef:
   name: eks-platform-provider-helm
 subjects:
   - kind: ServiceAccount
-    name: provider-helm-20a901f62fa8
+    name: provider-helm-2280e32fd4e4
     namespace: crossplane-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -449,6 +571,12 @@ subjects:
     name: crossplane-contrib-provider-aws-iam-570c487ce2f5
     namespace: crossplane-system
   - kind: ServiceAccount
+    name: upbound-provider-aws-sqs-73f0d8415ea7
+    namespace: crossplane-system
+  - kind: ServiceAccount
+    name: upbound-provider-aws-cloudwatchevents-5266e756ac50
+    namespace: crossplane-system
+  - kind: ServiceAccount
     name: crossplane-contrib-provider-aws-rds-43e6ece61aa7
     namespace: crossplane-system
   - kind: ServiceAccount
@@ -461,7 +589,7 @@ subjects:
     name: provider-kubernetes-f6665ef36536
     namespace: crossplane-system
   - kind: ServiceAccount
-    name: provider-helm-20a901f62fa8
+    name: provider-helm-2280e32fd4e4
     namespace: crossplane-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -520,6 +648,12 @@ subjects:
     name: crossplane-contrib-provider-aws-iam-570c487ce2f5
     namespace: crossplane-system
   - kind: ServiceAccount
+    name: upbound-provider-aws-sqs-73f0d8415ea7
+    namespace: crossplane-system
+  - kind: ServiceAccount
+    name: upbound-provider-aws-cloudwatchevents-5266e756ac50
+    namespace: crossplane-system
+  - kind: ServiceAccount
     name: crossplane-contrib-provider-aws-rds-43e6ece61aa7
     namespace: crossplane-system
   - kind: ServiceAccount
@@ -532,7 +666,7 @@ subjects:
     name: provider-kubernetes-f6665ef36536
     namespace: crossplane-system
   - kind: ServiceAccount
-    name: provider-helm-20a901f62fa8
+    name: provider-helm-2280e32fd4e4
     namespace: crossplane-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -573,6 +707,12 @@ subjects:
   - kind: ServiceAccount
     name: crossplane-contrib-provider-aws-iam-570c487ce2f5
     namespace: crossplane-system
+  - kind: ServiceAccount
+    name: upbound-provider-aws-sqs-73f0d8415ea7
+    namespace: crossplane-system
+  - kind: ServiceAccount
+    name: upbound-provider-aws-cloudwatchevents-5266e756ac50
+    namespace: crossplane-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -584,6 +724,8 @@ rules:
   - apiGroups:
       - aws.m.upbound.io
       - aws.upbound.io
+      - cloudwatchevents.aws.m.upbound.io
+      - cloudwatchevents.aws.upbound.io
       - ec2.aws.m.upbound.io
       - ec2.aws.upbound.io
       - eks.aws.m.upbound.io
@@ -601,6 +743,8 @@ rules:
       - rds.aws.upbound.io
       - s3.aws.m.upbound.io
       - s3.aws.upbound.io
+      - sqs.aws.m.upbound.io
+      - sqs.aws.upbound.io
     resources:
       - '*'
     verbs:

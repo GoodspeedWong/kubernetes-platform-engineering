@@ -19,12 +19,12 @@ class ExplicitProviderRBACTests(unittest.TestCase):
     def named(self, kind, name):
         return next(d for d in self.documents if d["kind"] == kind and d["metadata"]["name"] == name)
 
-    def test_all_eight_service_accounts_are_exact_and_no_group_is_bound(self):
+    def test_all_ten_service_accounts_are_exact_and_no_group_is_bound(self):
         bindings = [d for d in self.documents if d["kind"].endswith("Binding")]
         for document in bindings:
             self.assertTrue(all(s["kind"] == "ServiceAccount" for s in document["subjects"]))
             self.assertTrue(all(s["namespace"] == rbac.NS for s in document["subjects"]))
-        self.assertEqual(8, len(self.contract["providers"]))
+        self.assertEqual(10, len(self.contract["providers"]))
 
     def test_secret_permission_is_named_namespaced_get_only(self):
         secret_rules = [(d, rule) for d in self.documents for rule in d.get("rules", [])
@@ -36,13 +36,20 @@ class ExplicitProviderRBACTests(unittest.TestCase):
         self.assertEqual(["get"], rule["verbs"])
         self.assertEqual([rbac.SESSION], rule["resourceNames"])
 
-    def test_only_three_reviewed_aws_readers_are_bound(self):
+    def test_only_five_reviewed_aws_readers_are_bound(self):
         binding = self.named("RoleBinding", "eks-platform-session-reader")
         names = {s["name"] for s in binding["subjects"]}
-        self.assertEqual({p["revision"] for p in self.contract["providers"] if p["service"] in {"ec2", "eks", "iam"}}, names)
+        self.assertEqual(
+            {
+                p["revision"]
+                for p in self.contract["providers"]
+                if p["service"] in rbac.SESSION_READER_SERVICES
+            },
+            names,
+        )
 
     def test_aws_service_cannot_manage_other_service_or_providerconfig(self):
-        for service in ("ec2", "eks", "iam", "rds", "s3"):
+        for service in rbac.AWS_SERVICES - {"aws"}:
             rules = self.named("ClusterRole", "eks-platform-provider-" + service)["rules"]
             self.assertEqual(rbac.groups(service), rules[0]["apiGroups"])
             self.assertEqual(rbac.READ, rules[1]["verbs"])
@@ -67,19 +74,45 @@ class ExplicitProviderRBACTests(unittest.TestCase):
         self.assertTrue(set(self.contract["coreApiGroups"]).issubset(rule["apiGroups"]))
         self.assertIn("kubernetes.crossplane.io", rule["apiGroups"])
 
-    def test_unknown_revision_and_extra_secret_reader_fail_closed(self):
-        for change in ("revision", "reader"):
+    def test_digest_revision_runtime_and_secret_reader_drift_fail_closed(self):
+        for change in ("digest", "revision", "runtime", "reader"):
             bad = copy.deepcopy(self.contract)
-            if change == "revision":
+            if change == "digest":
+                bad["providers"][0]["package"] = "provider:v2.5.3"
+            elif change == "revision":
                 bad["providers"][0]["revision"] = "unreviewed"
+            elif change == "runtime":
+                bad["providers"][0]["runtimeConfig"] = "default"
             else:
-                bad["providers"][3]["sessionReader"] = True
+                provider = next(
+                    p for p in bad["providers"] if p["service"] == "rds"
+                )
+                provider["sessionReader"] = True
             with patch.object(rbac, "load_yaml", return_value=bad), self.assertRaises(ToolError):
                 rbac.inventory()
 
+    def test_exactly_seven_provider_runtimes_are_session_bound(self):
+        consumers = {
+            provider["name"]
+            for provider in self.contract["providers"]
+            if provider["runtimeConfig"] != rbac.RUNTIME_DEFAULT
+        }
+        self.assertEqual(
+            {
+                "provider-helm",
+                "provider-kubernetes",
+                "crossplane-contrib-provider-aws-ec2",
+                "crossplane-contrib-provider-aws-eks",
+                "crossplane-contrib-provider-aws-iam",
+                "upbound-provider-aws-sqs",
+                "upbound-provider-aws-cloudwatchevents",
+            },
+            consumers,
+        )
+
     def test_retirement_is_exact_and_never_targets_business_resources(self):
         targets = rbac.retired_targets(self.contract)
-        self.assertEqual(20, len(targets))
+        self.assertEqual(24, len(targets))
         self.assertTrue(all(ns in (None, rbac.NS) for _, _, ns in targets))
         self.assertTrue(all(kind in {"clusterrole", "clusterrolebinding", "deployment", "serviceaccount"} for kind, _, _ in targets))
         self.assertEqual(1, sum(kind == "deployment" for kind, _, _ in targets))

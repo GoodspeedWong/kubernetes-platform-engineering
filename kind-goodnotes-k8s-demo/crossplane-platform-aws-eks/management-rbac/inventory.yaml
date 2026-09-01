@@ -1,4 +1,4 @@
-schemaVersion: 1
+schemaVersion: 2
 context: kind-kube-nebula-a
 namespace: crossplane-system
 coreApiGroups:
@@ -8,41 +8,81 @@ coreApiGroups:
 providers:
   - name: crossplane-contrib-provider-aws-ec2
     revision: crossplane-contrib-provider-aws-ec2-12ebddf96217
-    package: xpkg.upbound.io/upbound/provider-aws-ec2:v2.5.3
+    package: xpkg.upbound.io/upbound/provider-aws-ec2@sha256:12ebddf9621715876a0c998168475db59241c5e447d839b3145ac3c23def1adc
+    version: v2.5.3
+    lockKey: providerAWSEC2
     service: ec2
+    runtimeConfig: eks-aws-session
     sessionReader: true
   - name: crossplane-contrib-provider-aws-eks
     revision: crossplane-contrib-provider-aws-eks-649f497fbcc2
-    package: xpkg.upbound.io/upbound/provider-aws-eks:v2.5.3
+    package: xpkg.upbound.io/upbound/provider-aws-eks@sha256:649f497fbcc262ce36a5d44dc70cc007a6fa6cd6baeea75d4509f2bc4c9db904
+    version: v2.5.3
+    lockKey: providerAWSEKS
     service: eks
+    runtimeConfig: eks-aws-session
     sessionReader: true
   - name: crossplane-contrib-provider-aws-iam
     revision: crossplane-contrib-provider-aws-iam-570c487ce2f5
-    package: xpkg.upbound.io/upbound/provider-aws-iam:v2.5.3
+    package: xpkg.upbound.io/upbound/provider-aws-iam@sha256:570c487ce2f51455be3d12193b19aebaab7711b40abdfa4f9b02cbb3b9925980
+    version: v2.5.3
+    lockKey: providerAWSIAM
     service: iam
+    runtimeConfig: eks-aws-session
+    sessionReader: true
+  - name: upbound-provider-aws-sqs
+    revision: upbound-provider-aws-sqs-73f0d8415ea7
+    package: xpkg.upbound.io/upbound/provider-aws-sqs@sha256:73f0d8415ea7be785446b924e47b67a4fa39c0927f4c79ed4d6b90893a97d56e
+    version: v2.5.3
+    lockKey: providerAWSSQS
+    service: sqs
+    runtimeConfig: eks-aws-session
+    sessionReader: true
+  - name: upbound-provider-aws-cloudwatchevents
+    revision: upbound-provider-aws-cloudwatchevents-5266e756ac50
+    package: xpkg.upbound.io/upbound/provider-aws-cloudwatchevents@sha256:5266e756ac5083a00c270e6aa1d56f98db6b771c0581ddf055a0dcd9eadbb3d9
+    version: v2.5.3
+    lockKey: providerAWSCloudWatchEvents
+    service: cloudwatchevents
+    runtimeConfig: eks-aws-session
     sessionReader: true
   - name: crossplane-contrib-provider-aws-rds
     revision: crossplane-contrib-provider-aws-rds-43e6ece61aa7
-    package: xpkg.upbound.io/upbound/provider-aws-rds:v2.5.3
+    package: xpkg.upbound.io/upbound/provider-aws-rds@sha256:43e6ece61aa7d653c9e7fc865e77f3e825447ca3d14eaf9ffec2f79433f1b4ad
+    version: v2.5.3
+    lockKey: providerAWSRDS
     service: rds
+    runtimeConfig: default
     sessionReader: false
   - name: crossplane-contrib-provider-aws-s3
     revision: crossplane-contrib-provider-aws-s3-8caec5d5a189
-    package: xpkg.upbound.io/upbound/provider-aws-s3:v2.5.3
+    package: xpkg.upbound.io/upbound/provider-aws-s3@sha256:8caec5d5a189aed41fa7d10505d9bd72c46440321fcac15e02286f6f7af3bf45
+    version: v2.5.3
+    lockKey: providerAWSS3
     service: s3
+    runtimeConfig: default
     sessionReader: false
   - name: upbound-provider-family-aws
     revision: upbound-provider-family-aws-7971b0bc2602
-    package: xpkg.upbound.io/upbound/provider-family-aws:v2.5.3
+    package: xpkg.upbound.io/upbound/provider-family-aws@sha256:7971b0bc2602b82d9303425f2cf65aacff789a704cd5b24aa2367345a35a3c09
+    version: v2.5.3
+    lockKey: providerFamilyAWS
     service: aws
+    runtimeConfig: default
     sessionReader: false
   - name: provider-kubernetes
     revision: provider-kubernetes-f6665ef36536
-    package: xpkg.crossplane.io/crossplane-contrib/provider-kubernetes:v1.2.1
+    package: xpkg.crossplane.io/crossplane-contrib/provider-kubernetes@sha256:f6665ef36536d3c54343ac9142376c402fdac8d39591c9720ead104f8d9bf612
+    version: v1.2.1
+    lockKey: providerKubernetes
     service: kubernetes
+    runtimeConfig: eks-remote-auth
     sessionReader: false
   - name: provider-helm
-    revision: provider-helm-20a901f62fa8
-    package: xpkg.crossplane.io/crossplane-contrib/provider-helm:v1.0.4
+    revision: provider-helm-2280e32fd4e4
+    package: xpkg.crossplane.io/crossplane-contrib/provider-helm@sha256:2280e32fd4e42f0bbe66d1dcd8ddd9cc3a4d46eaba9f4bccddfaec2302664926
+    version: v1.4.0
+    lockKey: providerHelm
     service: helm
+    runtimeConfig: eks-remote-auth
     sessionReader: false

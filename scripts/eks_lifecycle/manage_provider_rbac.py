@@ -18,28 +18,63 @@ ACK = "I-APPROVE-EXPLICIT-PROVIDER-RBAC"
 LABELS = {"platform.aws.goodnotes.io/managed-by": "platform-rbac-operator"}
 READ = ["get", "list", "watch"]
 WRITE = ["get", "list", "watch", "create", "update", "patch", "delete"]
-AWS_SERVICES = {"ec2", "eks", "iam", "rds", "s3", "aws"}
+AWS_SERVICES = {
+    "aws",
+    "cloudwatchevents",
+    "ec2",
+    "eks",
+    "iam",
+    "rds",
+    "s3",
+    "sqs",
+}
+REMOTE_AUTH_SERVICES = {"helm", "kubernetes"}
+SESSION_READER_SERVICES = {"cloudwatchevents", "ec2", "eks", "iam", "sqs"}
+RUNTIME_AWS = "eks-aws-session"
+RUNTIME_REMOTE = "eks-remote-auth"
+RUNTIME_DEFAULT = "default"
+PACKAGE_DIGEST = re.compile(r"^.+@sha256:([a-f0-9]{64})$")
 
 
 def inventory() -> dict:
     result = load_yaml(ROOT / "inventory.yaml")
-    if result.get("schemaVersion") != 1 or result.get("context") != maintenance.CONTEXT or result.get("namespace") != NS:
+    if result.get("schemaVersion") != 2 or result.get("context") != maintenance.CONTEXT or result.get("namespace") != NS:
         raise ToolError("unreviewed inventory context/schema")
     providers = result["providers"]
-    for field in ("name", "revision", "service"):
+    if {p.get("service") for p in providers} != AWS_SERVICES | REMOTE_AUTH_SERVICES:
+        raise ToolError("reviewed Provider service inventory is incomplete")
+    for field in ("name", "revision", "package", "lockKey", "service"):
         if len({p[field] for p in providers}) != len(providers):
             raise ToolError("duplicate provider identity")
     for provider in providers:
-        if provider["service"] not in AWS_SERVICES | {"kubernetes", "helm"}:
+        service = provider["service"]
+        if service not in AWS_SERVICES | REMOTE_AUTH_SERVICES:
             raise ToolError("new Provider service requires a renderer review")
-        if not re.fullmatch(re.escape(provider["name"]) + r"-[a-f0-9]{12}", provider["revision"]):
-            raise ToolError("Provider revision is not explicitly pinned")
+        digest = PACKAGE_DIGEST.fullmatch(provider["package"])
+        if digest is None:
+            raise ToolError("Provider package must use an immutable sha256 digest")
+        expected_revision = f"{provider['name']}-{digest.group(1)[:12]}"
+        if provider["revision"] != expected_revision:
+            raise ToolError("Provider revision does not match its package digest")
+        if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", provider.get("version", "")):
+            raise ToolError("Provider version must be an explicit release")
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]+", provider["lockKey"]):
+            raise ToolError("Provider lock key is invalid")
         if not isinstance(provider["sessionReader"], bool):
             raise ToolError("sessionReader must be explicit")
-        if provider["sessionReader"] and provider["service"] not in {"ec2", "eks", "iam"}:
-            raise ToolError("additional credential consumer requires review")
-        if not re.search(r":v[0-9]+\.[0-9]+\.[0-9]+$", provider["package"]):
-            raise ToolError("package tag must be an explicit release")
+        expected_runtime = (
+            RUNTIME_AWS
+            if service in SESSION_READER_SERVICES
+            else RUNTIME_REMOTE
+            if service in REMOTE_AUTH_SERVICES
+            else RUNTIME_DEFAULT
+        )
+        if provider["runtimeConfig"] != expected_runtime:
+            raise ToolError("Provider runtime does not match the reviewed service boundary")
+        if provider["sessionReader"] != (service in SESSION_READER_SERVICES):
+            raise ToolError("session Secret reader does not match the reviewed service boundary")
+    if sum(p["runtimeConfig"] != RUNTIME_DEFAULT for p in providers) != 7:
+        raise ToolError("exactly seven Provider runtimes must consume an on-demand session")
     return result
 
 

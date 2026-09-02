@@ -38,6 +38,7 @@ class P1ToolingTests(unittest.TestCase):
             "render_network.py",
             "render_recursive.py",
             "run_m1_validation.py",
+            "run_u0_management_preflight.py",
             "validate_karpenter_chart.py",
             "validate_rendered_schemas.py",
             "validate_static.py",

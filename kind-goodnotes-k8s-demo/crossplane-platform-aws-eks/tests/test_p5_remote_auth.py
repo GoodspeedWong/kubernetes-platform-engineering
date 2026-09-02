@@ -451,7 +451,7 @@ class P5RemoteAuthenticationTests(unittest.TestCase):
             deployments.append(self._available_deployment(revision_name))
         deployments.extend(
             self._available_deployment(name)
-            for name in ("crossplane", "crossplane-rbac-manager")
+            for name in preflight.REQUIRED_CORE_DEPLOYMENTS
         )
         report = preflight.evaluate_online_runtime(
             lock,
@@ -460,6 +460,35 @@ class P5RemoteAuthenticationTests(unittest.TestCase):
             {"items": deployments},
         )
         self.assertTrue(report["requiredDeploymentsAvailable"])
+
+        crossplane = next(
+            item for item in deployments if item["metadata"]["name"] == "crossplane"
+        )
+        crossplane["spec"]["replicas"] = 0
+        crossplane["status"]["availableReplicas"] = 0
+        with self.assertRaisesRegex(
+            common.ToolError, "Crossplane controller Deployment is parked"
+        ):
+            preflight.evaluate_online_runtime(
+                lock,
+                {"items": providers},
+                {"items": revisions},
+                {"items": deployments},
+            )
+        crossplane["spec"]["replicas"] = 1
+        crossplane["status"]["availableReplicas"] = 1
+
+        deployments.append(self._available_deployment("crossplane-rbac-manager"))
+        with self.assertRaisesRegex(
+            common.ToolError, "forbidden automatic RBAC manager Deployment is present"
+        ):
+            preflight.evaluate_online_runtime(
+                lock,
+                {"items": providers},
+                {"items": revisions},
+                {"items": deployments},
+            )
+        deployments.pop()
 
         providers[1]["spec"]["package"] = "provider-helm:stale"
         with self.assertRaisesRegex(common.ToolError, "U0 remote-auth runtime gate failed"):

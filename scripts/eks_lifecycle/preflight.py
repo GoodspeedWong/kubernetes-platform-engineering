@@ -28,6 +28,8 @@ REMOTE_AUTH_PROVIDERS = {
     "provider-helm": "providerHelm",
 }
 REMOTE_AUTH_RUNTIME_CONFIG = "eks-remote-auth"
+REQUIRED_CORE_DEPLOYMENTS = ("crossplane",)
+FORBIDDEN_CORE_DEPLOYMENTS = ("crossplane-rbac-manager",)
 
 
 def _condition_true(resource: dict[str, Any], condition_type: str) -> bool:
@@ -197,21 +199,31 @@ def evaluate_online_runtime(
             continue
         desired = deployment.get("spec", {}).get("replicas", 1)
         available = deployment.get("status", {}).get("availableReplicas", 0)
-        if available < desired:
+        if not isinstance(desired, int) or desired < 1:
+            errors.append(f"provider controller Deployment is parked: {revision_name}:{desired}")
+        elif available < desired:
             errors.append(
                 f"provider controller Deployment unavailable: {revision_name}:{available}/{desired}"
             )
 
-    for core_name in ("crossplane", "crossplane-rbac-manager"):
+    for core_name in REQUIRED_CORE_DEPLOYMENTS:
         deployment = deployments.get(core_name)
         if deployment is None:
             errors.append(f"required Crossplane controller Deployment is missing: {core_name}")
             continue
         desired = deployment.get("spec", {}).get("replicas", 1)
         available = deployment.get("status", {}).get("availableReplicas", 0)
-        if available < desired:
+        if not isinstance(desired, int) or desired < 1:
+            errors.append(f"Crossplane controller Deployment is parked: {core_name}:{desired}")
+        elif available < desired:
             errors.append(
                 f"Crossplane controller Deployment unavailable: {core_name}:{available}/{desired}"
+            )
+
+    for core_name in FORBIDDEN_CORE_DEPLOYMENTS:
+        if core_name in deployments:
+            errors.append(
+                f"forbidden automatic RBAC manager Deployment is present: {core_name}"
             )
 
     if errors:
@@ -292,9 +304,6 @@ def online_read_only_checks(context: str) -> dict[str, object]:
             "deployments",
             "-n",
             "crossplane-system",
-            "crossplane",
-            "crossplane-rbac-manager",
-            *revisions,
             "-o",
             "json",
         ]

@@ -25,22 +25,7 @@ def _kube(contract: credentials.BootstrapContract, *args: str, body: Any | None 
 
 
 def _deployments(contract: credentials.BootstrapContract) -> dict[str, dict[str, Any]]:
-    items = _kube(
-        contract,
-        "--namespace",
-        credentials.SOURCE_NAMESPACE,
-        "get",
-        "deployments",
-        "-l",
-        "platform.aws.goodnotes.io/session-renewal=enabled",
-    ).get("items", [])
-    result = {
-        item.get("metadata", {}).get("labels", {}).get("pkg.crossplane.io/provider"): item
-        for item in items
-    }
-    if len(items) != len(credentials.PROVIDERS) or set(result) != set(credentials.PROVIDERS):
-        raise ToolError("runtime deployment inventory differs from reviewed providers")
-    return result
+    return credentials.reviewed_provider_deployments(contract)
 
 
 def close_session(

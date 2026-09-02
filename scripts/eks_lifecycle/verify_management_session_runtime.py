@@ -160,23 +160,10 @@ def _verify_caller(
     return role_arn
 
 
-def _verify_deployments(contract: credentials.BootstrapContract) -> list[str]:
-    document = _kube(
-        contract,
-        "--namespace",
-        credentials.SOURCE_NAMESPACE,
-        "get",
-        "deployments",
-        "-l",
-        "platform.aws.goodnotes.io/session-renewal=enabled",
-    )
-    items = document.get("items", [])
-    by_provider = {
-        item.get("metadata", {}).get("labels", {}).get("pkg.crossplane.io/provider"): item
-        for item in items
-    }
-    if len(items) != len(credentials.PROVIDERS) or set(by_provider) != set(credentials.PROVIDERS):
-        raise ToolError("runtime deployment inventory differs from reviewed providers")
+def _verify_deployments(
+    contract: credentials.BootstrapContract,
+) -> dict[str, dict[str, Any]]:
+    by_provider = credentials.reviewed_provider_deployments(contract)
     for provider, item in by_provider.items():
         desired = item.get("spec", {}).get("replicas", 1)
         status = item.get("status", {})
@@ -196,24 +183,14 @@ def _verify_deployments(contract: credentials.BootstrapContract) -> list[str]:
         )
         if not refreshed:
             raise ToolError("Provider runtime lacks the explicit session rollout marker")
-    return sorted(by_provider)
+    return by_provider
 
 
-def _verify_runtime_logs(contract: credentials.BootstrapContract, providers: list[str]) -> None:
-    deployments = _kube(
-        contract,
-        "--namespace",
-        credentials.SOURCE_NAMESPACE,
-        "get",
-        "deployments",
-        "-l",
-        "platform.aws.goodnotes.io/session-renewal=enabled",
-    ).get("items", [])
-    names = {
-        item["metadata"]["labels"]["pkg.crossplane.io/provider"]: item["metadata"]["name"]
-        for item in deployments
-    }
-    for provider in providers:
+def _verify_runtime_logs(
+    contract: credentials.BootstrapContract,
+    deployments: dict[str, dict[str, Any]],
+) -> None:
+    for provider, deployment in deployments.items():
         try:
             result = subprocess.run(
                 [
@@ -223,7 +200,7 @@ def _verify_runtime_logs(contract: credentials.BootstrapContract, providers: lis
                     "--namespace",
                     credentials.SOURCE_NAMESPACE,
                     "logs",
-                    "deployment/" + names[provider],
+                    "deployment/" + deployment["metadata"]["name"],
                     "--all-containers=true",
                     "--tail=200",
                 ],
@@ -247,8 +224,8 @@ def verify_active(contract: credentials.BootstrapContract) -> dict[str, Any]:
     if first <= datetime.now(timezone.utc):
         raise ToolError("published session is not active")
     credentials.verify_direct_session_runtime(contract)
-    providers = _verify_deployments(contract)
-    _verify_runtime_logs(contract, providers)
+    deployments = _verify_deployments(contract)
+    _verify_runtime_logs(contract, deployments)
     callers = [
         _verify_caller(contract, bundle.execution, contract.provider_role_arn),
         _verify_caller(contract, bundle.deployment, contract.deployment_role_arn),
@@ -276,7 +253,7 @@ def verify_active(contract: credentials.BootstrapContract) -> dict[str, Any]:
         "sessionMode": credentials.SESSION_MODE,
         "providerReadinessVerified": True,
         "runtimeAuthenticationVerified": True,
-        "providers": providers,
+        "providers": sorted(deployments),
         "callerRoles": callers,
         "readOnlyAwsServicesVerified": [item[0] for item in read_probes],
         "targetEksDescribeAuthorized": True,

@@ -430,19 +430,49 @@ def require_closed_window(contract: BootstrapContract, metadata: dict[str, Any] 
             raise ToolError("previous session is still active; no implicit renewal or early replacement")
 
 
-def verify_publication_gate(contract: BootstrapContract) -> list[dict[str, Any]]:
+def reviewed_provider_deployments(contract: BootstrapContract) -> dict[str, dict[str, Any]]:
+    """Resolve consumers through Provider -> current revision -> owned Deployment.
+
+    DeploymentRuntimeConfig metadata labels replace the package controller's
+    optional labels, so a provider-name label is not a stable identity. The
+    Provider status and controller ownerReference are the authoritative chain.
+    """
     base = ["kubectl", "--context", contract.context, "--namespace", SOURCE_NAMESPACE]
+    providers = _run_json(
+        ["kubectl", "--context", contract.context, "get", "providers.pkg.crossplane.io", "-o", "json"]
+    ).get("items", [])
+    by_name = {item.get("metadata", {}).get("name"): item for item in providers}
+    revisions: dict[str, str] = {}
+    for name in PROVIDERS:
+        revision = by_name.get(name, {}).get("status", {}).get("currentRevision")
+        if not isinstance(revision, str) or not revision or revision in revisions:
+            raise ToolError("reviewed Provider currentRevision inventory is incomplete or ambiguous")
+        revisions[revision] = name
     deployments = _run_json(base + ["get", "deployments", "-l",
         "platform.aws.goodnotes.io/session-renewal=enabled", "-o", "json"]).get("items", [])
-    # Restart all credential consumers, but never silently affect unapproved shared
-    # runtimes. The label is an explicit platform operator opt-in.
-    if (len(deployments) != len(PROVIDERS)
-            or {d.get("metadata", {}).get("labels", {}).get("pkg.crossplane.io/provider")
-                for d in deployments} != set(PROVIDERS)):
+    result: dict[str, dict[str, Any]] = {}
+    for deployment in deployments:
+        owners = [owner for owner in deployment.get("metadata", {}).get("ownerReferences", [])
+                  if owner.get("kind") == "ProviderRevision" and owner.get("controller") is True]
+        if (len(owners) != 1 or owners[0].get("name") not in revisions
+                or deployment.get("metadata", {}).get("name") != owners[0].get("name")):
+            raise ToolError("session consumer lacks an exact reviewed ProviderRevision owner")
+        name = revisions[owners[0]["name"]]
+        if name in result:
+            raise ToolError("multiple session consumers resolve to one reviewed Provider")
+        result[name] = deployment
+    if len(deployments) != len(PROVIDERS) or set(result) != set(PROVIDERS):
         raise ToolError("exactly one deployment per reviewed provider must opt into manual publication")
+    return result
+
+
+def verify_publication_gate(contract: BootstrapContract) -> list[dict[str, Any]]:
+    # Restart all credential consumers, but never silently affect unapproved shared
+    # runtimes. The label is the opt-in; ownerReferences establish exact identity.
+    deployments = reviewed_provider_deployments(contract)
     verify_explicit_provider_rbac()
     verify_direct_session_runtime(contract)
-    return deployments
+    return list(deployments.values())
 
 
 def publish_session(contract: BootstrapContract, sessions: TargetSessions) -> None:

@@ -255,34 +255,53 @@ class SecurityRemediationTests(unittest.TestCase):
         self.assertEqual(1, run.call_count)
 
     def test_session_publication_uses_cas_and_restarts_only_opted_in_providers(self):
-        deployments = {"items": [{"metadata": {"name": name + "-revision", "labels": {
-            "pkg.crossplane.io/provider": name}}} for name in credentials.PROVIDERS]}
+        providers = {"items": [{"metadata": {"name": name}, "status": {
+            "currentRevision": name + "-revision"}} for name in credentials.PROVIDERS]}
+        deployments = {"items": [{"metadata": {"name": name + "-revision", "ownerReferences": [{
+            "kind": "ProviderRevision", "name": name + "-revision", "controller": True}]}}
+            for name in credentials.PROVIDERS]}
         doc = credentials.secret_document(contract(), target_sessions())
         for key in ("expires-at", "all-expires-at", "deadline"):
             doc["metadata"]["annotations"][credentials.TAG_PREFIX + key] = "2000-01-01T00:00:00Z"
         current = {"items": [{"metadata": {**doc["metadata"], "resourceVersion": "42"}}]}
-        with patch.object(credentials, "verify_direct_session_runtime"), patch.object(credentials, "verify_explicit_provider_rbac") as gate, patch.object(credentials, "_run_json", side_effect=[deployments, current, True, True] + [True] * len(credentials.PROVIDERS)) as run:
+        with patch.object(credentials, "verify_direct_session_runtime"), patch.object(credentials, "verify_explicit_provider_rbac") as gate, patch.object(credentials, "_run_json", side_effect=[providers, deployments, current, True, True] + [True] * len(credentials.PROVIDERS)) as run:
             credentials.publish_session(contract(), target_sessions())
         gate.assert_called_once_with()
         commands = [call.args[0] for call in run.call_args_list]
-        self.assertIn("--dry-run=server", commands[2])
-        self.assertIn("replace", commands[3])
-        self.assertEqual("42", json.loads(run.call_args_list[3].kwargs["input_text"])["metadata"]["resourceVersion"])
+        self.assertIn("--dry-run=server", commands[3])
+        self.assertIn("replace", commands[4])
+        self.assertEqual("42", json.loads(run.call_args_list[4].kwargs["input_text"])["metadata"]["resourceVersion"])
         self.assertEqual(len(credentials.PROVIDERS), sum("patch" in c for c in commands))
         patches = [json.loads(call.args[0][call.args[0].index("-p") + 1])
                    for call in run.call_args_list if "patch" in call.args[0]]
         self.assertTrue(all(patch["spec"]["replicas"] == 1 for patch in patches))
         self.assertNotIn("secret-test-only", json.dumps(commands))
-        self.assertIn(r'\"items\"', commands[1][-1])
+        self.assertIn(r'\"items\"', commands[2][-1])
 
     def test_existing_foreign_secret_and_failed_publish_cannot_trigger_rollout(self):
-        deployments = {"items": [{"metadata": {"name": name, "labels": {"pkg.crossplane.io/provider": name}}}
-                                  for name in credentials.PROVIDERS]}
-        for replies in ([deployments, {"items": [{"metadata": {"labels": {}}}]}],
-                        [deployments, {"items": []}, True, ToolError("publication response unknown")]):
+        providers = {"items": [{"metadata": {"name": name}, "status": {"currentRevision": name}}
+                                for name in credentials.PROVIDERS]}
+        deployments = {"items": [{"metadata": {"name": name, "ownerReferences": [{
+            "kind": "ProviderRevision", "name": name, "controller": True}]}}
+            for name in credentials.PROVIDERS]}
+        for replies in ([providers, deployments, {"items": [{"metadata": {"labels": {}}}]}],
+                        [providers, deployments, {"items": []}, True, ToolError("publication response unknown")]):
             with patch.object(credentials, "verify_direct_session_runtime"), patch.object(credentials, "verify_explicit_provider_rbac"), patch.object(credentials, "_run_json", side_effect=replies) as run, self.assertRaises(ToolError):
                 credentials.publish_session(contract(), target_sessions())
             self.assertFalse(any("patch" in c.args[0] for c in run.call_args_list))
+
+    def test_session_consumers_require_current_revision_controller_ownership(self):
+        providers = {"items": [{"metadata": {"name": name}, "status": {"currentRevision": name + "-r"}}
+                                for name in credentials.PROVIDERS]}
+        valid = {"items": [{"metadata": {"name": name + "-r", "ownerReferences": [{
+            "kind": "ProviderRevision", "name": name + "-r", "controller": True}]}}
+            for name in credentials.PROVIDERS]}
+        with patch.object(credentials, "_run_json", side_effect=[providers, valid]):
+            self.assertEqual(set(credentials.PROVIDERS), set(credentials.reviewed_provider_deployments(contract())))
+        invalid = copy.deepcopy(valid)
+        invalid["items"][0]["metadata"]["ownerReferences"][0]["controller"] = False
+        with patch.object(credentials, "_run_json", side_effect=[providers, invalid]), self.assertRaises(ToolError):
+            credentials.reviewed_provider_deployments(contract())
 
     def test_controller_role_boundaries_are_rendered_not_environment_owned(self):
         import render_cluster

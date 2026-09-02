@@ -92,7 +92,7 @@ class RuntimeSessionTests(unittest.TestCase):
         bundle = published_bundle()
         with patch.object(runtime, "read_published_sessions", return_value=bundle):
             with patch.object(credentials, "verify_direct_session_runtime") as direct:
-                with patch.object(runtime, "_verify_deployments", return_value=sorted(credentials.PROVIDERS)):
+                with patch.object(runtime, "_verify_deployments", return_value=deployments(1)):
                     with patch.object(runtime, "_verify_runtime_logs") as logs:
                         with patch.object(runtime, "_verify_caller", side_effect=[contract().provider_role_arn, contract().deployment_role_arn]) as caller:
                             with patch.object(runtime, "_aws", return_value=({}, None)) as aws:

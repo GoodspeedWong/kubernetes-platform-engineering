@@ -44,61 +44,79 @@ class RenewalProviderBindingsTests(unittest.TestCase):
         self.assertFalse(result["kubernetesMutation"])
 
     @staticmethod
+    def providers():
+        return {
+            "items": [
+                {
+                    "metadata": {"name": name},
+                    "status": {"currentRevision": name + "-revision"},
+                }
+                for name in renewal.PROVIDERS
+            ]
+        }
+
+    @staticmethod
     def deployments():
         return {
             "items": [
                 {
                     "metadata": {
                         "name": name + "-revision",
-                        "labels": {"pkg.crossplane.io/provider": name},
+                        "ownerReferences": [
+                            {
+                                "kind": "ProviderRevision",
+                                "name": name + "-revision",
+                                "controller": True,
+                            }
+                        ],
                     }
                 }
                 for name in renewal.PROVIDERS
             ]
         }
 
-    def assert_blocked_before_secret_access(self, deployments):
-        with patch.object(renewal, "_run_json", return_value=deployments) as run:
+    def assert_blocked_before_secret_access(self, providers, deployments):
+        with patch.object(renewal, "_run_json", side_effect=[providers, deployments]) as run:
             with self.assertRaises(ToolError):
                 renewal.publish_session(contract(), session())
-        self.assertEqual(1, run.call_count)
-        self.assertIn("deployments", run.call_args.args[0])
+        commands = [item.args[0] for item in run.call_args_list]
+        self.assertLessEqual(run.call_count, 2)
+        self.assertFalse(any("secrets" in command or "patch" in command for command in commands))
 
     def test_package_basename_aliases_are_not_provider_identities(self):
-        deployments = self.deployments()
-        for deployment in deployments["items"]:
-            labels = deployment["metadata"]["labels"]
+        providers = self.providers()
+        for provider in providers["items"]:
+            metadata = provider["metadata"]
             for prefix in ("crossplane-contrib-", "upbound-"):
-                labels["pkg.crossplane.io/provider"] = labels[
-                    "pkg.crossplane.io/provider"
-                ].removeprefix(prefix)
-        self.assert_blocked_before_secret_access(deployments)
+                metadata["name"] = metadata["name"].removeprefix(prefix)
+        self.assert_blocked_before_secret_access(providers, self.deployments())
 
     def test_duplicate_revision_does_not_expand_rollout_scope(self):
         deployments = self.deployments()
         extra = copy.deepcopy(deployments["items"][0])
         extra["metadata"]["name"] += "-old"
         deployments["items"].append(extra)
-        self.assert_blocked_before_secret_access(deployments)
+        self.assert_blocked_before_secret_access(self.providers(), deployments)
 
     def test_unrelated_provider_cannot_opt_into_session_renewal(self):
         deployments = self.deployments()
-        labels = deployments["items"][-1]["metadata"]["labels"]
-        labels["pkg.crossplane.io/provider"] = "crossplane-contrib-provider-aws-rds"
-        self.assert_blocked_before_secret_access(deployments)
+        owner = deployments["items"][-1]["metadata"]["ownerReferences"][0]
+        owner["name"] = "crossplane-contrib-provider-aws-rds-revision"
+        deployments["items"][-1]["metadata"]["name"] = owner["name"]
+        self.assert_blocked_before_secret_access(self.providers(), deployments)
 
     def test_missing_dependency_stops_before_secret_access(self):
         deployments = self.deployments()
         deployments["items"].pop()
-        self.assert_blocked_before_secret_access(deployments)
+        self.assert_blocked_before_secret_access(self.providers(), deployments)
 
     def test_failed_live_rbac_gate_prevents_secret_access_and_rollout(self):
-        with patch.object(renewal, "_run_json", return_value=self.deployments()) as run:
+        with patch.object(renewal, "_run_json", side_effect=[self.providers(), self.deployments()]) as run:
             with patch.object(renewal, "verify_explicit_provider_rbac", side_effect=ToolError("rbac drift")) as gate:
                 with self.assertRaises(ToolError):
                     renewal.publish_session(contract(), session())
         gate.assert_called_once_with()
-        self.assertEqual(1, run.call_count)
+        self.assertEqual(2, run.call_count)
 
 
 if __name__ == "__main__":

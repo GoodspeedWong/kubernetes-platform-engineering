@@ -70,6 +70,8 @@ class P3NetworkTests(unittest.TestCase):
         rules = "\n".join(rule["rule"] for rule in parameters["x-kubernetes-validations"])
         for immutable in ("region", "cidrBlock", "publicSubnets", "privateSubnets", "egress"):
             self.assertIn(f"self.{immutable}", rules)
+        self.assertIn("self.networkClass != 'application'", rules)
+        self.assertEqual(2, rules.count("cidrBlock.endsWith('/20')"))
 
     def test_composition_migrated_to_pipeline_and_kcl_lints(self) -> None:
         self.assertEqual("Pipeline", self.composition["spec"]["mode"])

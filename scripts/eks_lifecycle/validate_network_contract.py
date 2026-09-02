@@ -81,7 +81,9 @@ def normalized_environment_ref(parameters: dict[str, Any]) -> dict[str, str] | N
     return {"kind": "XEKSEnvironment", "name": name}
 
 
-def validate_subnets(parameters: dict[str, Any], region: str) -> list[ipaddress.IPv4Network]:
+def validate_subnets(
+    parameters: dict[str, Any], region: str, *, application: bool = False
+) -> list[ipaddress.IPv4Network]:
     try:
         vpc = ipaddress.ip_network(
             require_string(parameters.get("cidrBlock"), "spec.parameters.cidrBlock"),
@@ -117,6 +119,10 @@ def validate_subnets(parameters: dict[str, Any], region: str) -> list[ipaddress.
                 raise ToolError(f"invalid subnet CIDR: {error}") from error
             if network.version != 4 or not 20 <= network.prefixlen <= 28:
                 raise ToolError("subnet CIDRs must be IPv4 with a /20 through /28 prefix")
+            if visibility == "privateSubnets" and application and network.prefixlen != 20:
+                raise ToolError(
+                    "application private subnet CIDRs must use /20 for Cilium ENI and upgrade headroom"
+                )
             if not network.subnet_of(vpc):
                 raise ToolError(f"subnet {network} is outside VPC {vpc}")
             parsed.append(network)
@@ -170,7 +176,7 @@ def validate_network(
     region = require_string(parameters.get("region"), "spec.parameters.region")
     if not REGION_RE.fullmatch(region):
         raise ToolError("spec.parameters.region is not a valid AWS region shape")
-    validate_subnets(parameters, region)
+    validate_subnets(parameters, region, application=network_class == "application")
     provider = normalized_provider_ref(parameters)
     egress_mode = normalized_egress(parameters)
     environment = normalized_environment_ref(parameters)

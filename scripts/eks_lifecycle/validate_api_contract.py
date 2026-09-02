@@ -167,6 +167,10 @@ def validate_network(parameters: dict[str, Any]) -> None:
                 raise ToolError(f"invalid subnet CIDR: {error}") from error
             if parsed.version != 4 or not 20 <= parsed.prefixlen <= 28:
                 raise ToolError("subnet CIDRs must be IPv4 with a /20 through /28 prefix")
+            if scope == "privateSubnets" and parsed.prefixlen != 20:
+                raise ToolError(
+                    "application private subnet CIDRs must use /20 for Cilium ENI and upgrade headroom"
+                )
             if not parsed.subnet_of(vpc):
                 raise ToolError(f"subnet {parsed} is outside VPC {vpc}")
             parsed_subnets.append(parsed)

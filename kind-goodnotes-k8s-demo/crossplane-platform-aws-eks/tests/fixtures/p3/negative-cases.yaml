@@ -1,12 +1,16 @@
 mutations:
   - id: overlapping-subnets
     path: spec.parameters.privateSubnets.a.cidrBlock
-    value: 10.50.0.0/24
+    value: 10.50.0.0/20
     expectedError: subnet CIDRs overlap
   - id: subnet-outside-vpc
     path: spec.parameters.privateSubnets.b.cidrBlock
-    value: 10.60.11.0/24
+    value: 10.60.32.0/20
     expectedError: is outside VPC
+  - id: undersized-application-private-subnet
+    path: spec.parameters.privateSubnets.b.cidrBlock
+    value: 10.50.48.0/24
+    expectedError: application private subnet CIDRs must use /20
   - id: missing-availability-zone
     path: spec.parameters.publicSubnets.b.availabilityZone
     delete: true

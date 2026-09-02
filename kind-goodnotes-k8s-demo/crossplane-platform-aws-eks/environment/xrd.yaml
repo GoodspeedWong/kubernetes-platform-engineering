@@ -196,7 +196,7 @@ spec:
                                   maxLength: 36
                                 cidrBlock:
                                   type: string
-                                  pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(2[0-8])$
+                                  pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/20$
                             b:
                               type: object
                               required:
@@ -209,7 +209,7 @@ spec:
                                   maxLength: 36
                                 cidrBlock:
                                   type: string
-                                  pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/(2[0-8])$
+                                  pattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/20$
                       x-kubernetes-validations:
                         - rule: self.publicSubnets.a.availabilityZone == self.privateSubnets.a.availabilityZone && self.publicSubnets.b.availabilityZone == self.privateSubnets.b.availabilityZone
                           message: public and private subnet pairs must use the same two availability zones

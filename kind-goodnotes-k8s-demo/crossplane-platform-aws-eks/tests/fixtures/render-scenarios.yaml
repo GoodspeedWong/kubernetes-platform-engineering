@@ -1,20 +1,20 @@
 schemaVersion: 1
 scenarios:
   - name: environment-active
-    expectedSha256: 6e316a05b68349df86d180076390a6d261da55b7fb855b5d4be53f7e586cfa4a
+    expectedSha256: bcbc8cd829ec299da79acae4a36e1e6897a621d6659c8fbc6b179e800c6c733a
     xr: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p2/environment-valid.yaml
     composition: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/environment/composition.yaml
     functions: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p2/functions.yaml
     xrd: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/environment/xrd.yaml
     requiredResources: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p10/required-catalog.yaml
   - name: network-single-nat
-    expectedSha256: a100f428e9c63de422d620c6619e4992fc30bb75f6c6d41e3d9e885c4ef517f3
+    expectedSha256: 3d53b0a61b8d5e6e96ece1cfd3fa5eadebf3ca9416495abfc03f5f4626ddc3f4
     xr: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p3/eks-single-nat.yaml
     composition: kind-goodnotes-k8s-demo/crossplane-platform-aws-network/composition.yaml
     functions: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p2/functions.yaml
     xrd: kind-goodnotes-k8s-demo/crossplane-platform-aws-network/xrd.yaml
   - name: cluster-oidc-ready
-    expectedSha256: deaf62d3026793342835ed2f60c6c70674264ba7b3310750a6769c24ba599419
+    expectedSha256: 5b65bd8dcc06076659630f5f1771526f2ed24202945d3798b090c7106985f2f3
     xr: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p4/cluster-valid.yaml
     composition: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/cluster/composition.yaml
     functions: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p2/functions.yaml
@@ -22,7 +22,7 @@ scenarios:
     observedResources: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p10/observed-cluster-oidc.yaml
     requiredResources: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p10/required-catalog.yaml
   - name: foundation-karpenter-stage
-    expectedSha256: 7b6899f9ccac1ef510aa667f73e1d166a49a964fe7e3423c4a0eaf661e29fc70
+    expectedSha256: cd51b4eb2450ca65a121b0e220342e62f19e8d83860de1dee2d11588b20e6ceb
     xr: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p5/foundation-valid.yaml
     composition: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/foundation/composition.yaml
     functions: kind-goodnotes-k8s-demo/crossplane-platform-aws-eks/tests/fixtures/p2/functions.yaml

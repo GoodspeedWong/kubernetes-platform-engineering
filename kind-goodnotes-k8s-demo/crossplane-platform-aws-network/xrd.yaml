@@ -56,6 +56,8 @@ spec:
                       message: environment-scoped discovery is supported only for application networks
                     - rule: '!has(self.egress) || !has(self.egress.mode) || self.egress.mode == ''None'' || has(self.environmentRef)'
                       message: SingleNAT requires an environmentRef so discovery and cost ownership remain scoped
+                    - rule: self.networkClass != 'application' || (self.privateSubnets.a.cidrBlock.endsWith('/20') && self.privateSubnets.b.cidrBlock.endsWith('/20'))
+                      message: application private subnets must use /20 for Cilium ENI and upgrade headroom
                     - rule: self.publicSubnets.a.availabilityZone == self.privateSubnets.a.availabilityZone && self.publicSubnets.b.availabilityZone == self.privateSubnets.b.availabilityZone
                       message: public and private subnet pairs must use the same two availability zones
                     - rule: self.publicSubnets.a.cidrBlock != self.privateSubnets.a.cidrBlock && self.publicSubnets.a.cidrBlock != self.privateSubnets.b.cidrBlock && self.publicSubnets.b.cidrBlock != self.privateSubnets.a.cidrBlock && self.publicSubnets.b.cidrBlock != self.privateSubnets.b.cidrBlock

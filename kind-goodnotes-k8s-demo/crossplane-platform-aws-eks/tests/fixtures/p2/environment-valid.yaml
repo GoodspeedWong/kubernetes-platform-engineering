@@ -32,10 +32,10 @@ spec:
       privateSubnets:
         a:
           availabilityZone: us-east-1a
-          cidrBlock: 10.50.10.0/24
+          cidrBlock: 10.50.16.0/20
         b:
           availabilityZone: us-east-1b
-          cidrBlock: 10.50.11.0/24
+          cidrBlock: 10.50.32.0/20
     compute:
       class: spot-general
       limits:

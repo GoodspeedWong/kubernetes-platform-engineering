@@ -21,6 +21,10 @@ mutations:
     value:
       - 0.0.0.0/0
     expectedError: unrestricted or non-IPv4 public endpoint access is forbidden
+  - id: undersized-private-subnet
+    path: spec.parameters.network.privateSubnets.a.cidrBlock
+    value: 10.50.48.0/24
+    expectedError: application private subnet CIDRs must use /20
   - id: shared-admin-deployment-identity
     path: spec.parameters.access.deploymentPrincipalArn
     value: arn:aws:iam::000000000000:role/TEST-ONLY-EksAdmin

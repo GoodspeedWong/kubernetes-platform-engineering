@@ -148,6 +148,14 @@ class P2APIContractTests(unittest.TestCase):
                 ]["enum"]
             ),
         )
+        for slot in ("a", "b"):
+            private_cidr = properties["network"]["properties"]["privateSubnets"][
+                "properties"
+            ][slot]["properties"]["cidrBlock"]
+            self.assertEqual(
+                r"^([0-9]{1,3}\.){3}[0-9]{1,3}/20$",
+                private_cidr["pattern"],
+            )
         all_keys = self._mapping_keys(parameters)
         self.assertTrue(api_contract.FORBIDDEN_FIELDS.isdisjoint(all_keys))
         rules = "\n".join(

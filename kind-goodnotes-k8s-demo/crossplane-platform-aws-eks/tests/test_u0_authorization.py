@@ -58,6 +58,7 @@ class U0AuthorizationTests(unittest.TestCase):
         self.directory = Path(self.temporary.name) / "u0-preflight-2026-09-02"
         self.directory.mkdir(mode=0o700)
         os.chmod(self.directory, 0o700)
+        self.claim_root = Path(self.temporary.name).resolve() / "claim-state"
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -195,6 +196,137 @@ class U0AuthorizationTests(unittest.TestCase):
         os.chmod(checksum, stat.S_IRUSR | stat.S_IRGRP)
         with self.assertRaisesRegex(ToolError, "owner-only regular"):
             u0.validate_authorization(path, require_approved=False)
+
+    def test_claim_is_atomic_owner_only_and_verifiable(self) -> None:
+        path = self.write_bundle(authorization(u0.APPROVED_STATUS))
+        claim_root = self.claim_root
+        result = u0.claim_authorization(
+            path,
+            u0.CLAIM_ACKNOWLEDGEMENT,
+            claim_root=claim_root,
+        )
+        receipt = claim_root / "u0-20260902-01.json"
+        self.assertTrue(result["claimed"])
+        self.assertTrue(result["localAuthorizationStateMutation"])
+        self.assertFalse(result["awsApiCalls"])
+        self.assertFalse(result["kubernetesApiCalls"])
+        self.assertEqual(0o700, stat.S_IMODE(claim_root.stat().st_mode))
+        self.assertEqual(0o600, stat.S_IMODE(receipt.stat().st_mode))
+        verified = u0.verify_claim(path, claim_root=claim_root)
+        self.assertTrue(verified["claimActive"])
+        self.assertFalse(verified["localAuthorizationStateMutation"])
+
+    def test_claim_rejects_pending_wrong_acknowledgement_and_reuse(self) -> None:
+        claim_root = self.claim_root
+        pending = self.write_bundle(authorization())
+        with self.assertRaisesRegex(ToolError, "not approved"):
+            u0.claim_authorization(
+                pending,
+                u0.CLAIM_ACKNOWLEDGEMENT,
+                claim_root=claim_root,
+            )
+        self.assertFalse(claim_root.exists())
+
+        approved = self.write_bundle(authorization(u0.APPROVED_STATUS))
+        with self.assertRaisesRegex(ToolError, "acknowledgement"):
+            u0.claim_authorization(approved, "", claim_root=claim_root)
+        self.assertFalse(claim_root.exists())
+        u0.claim_authorization(
+            approved,
+            u0.CLAIM_ACKNOWLEDGEMENT,
+            claim_root=claim_root,
+        )
+        with self.assertRaisesRegex(ToolError, "already claimed"):
+            u0.claim_authorization(
+                approved,
+                u0.CLAIM_ACKNOWLEDGEMENT,
+                claim_root=claim_root,
+            )
+
+    def test_claim_receipt_tamper_or_unsafe_state_is_rejected(self) -> None:
+        path = self.write_bundle(authorization(u0.APPROVED_STATUS))
+        claim_root = self.claim_root
+        u0.claim_authorization(
+            path,
+            u0.CLAIM_ACKNOWLEDGEMENT,
+            claim_root=claim_root,
+        )
+        receipt = claim_root / "u0-20260902-01.json"
+        document = json.loads(receipt.read_text())
+        document["authorizationSha256"] = "0" * 64
+        receipt.write_text(json.dumps(document))
+        os.chmod(receipt, 0o600)
+        with self.assertRaisesRegex(ToolError, "does not match"):
+            u0.verify_claim(path, claim_root=claim_root)
+
+        receipt.unlink()
+        target = Path(self.temporary.name) / "foreign-receipt.json"
+        target.write_text("{}")
+        os.chmod(target, 0o600)
+        receipt.symlink_to(target)
+        with self.assertRaises(ToolError):
+            u0.verify_claim(path, claim_root=claim_root)
+
+    def test_claim_binds_the_exact_reviewed_authorization_bytes(self) -> None:
+        document = authorization(u0.APPROVED_STATUS)
+        path = self.write_bundle(document)
+        claim_root = self.claim_root
+        u0.claim_authorization(
+            path,
+            u0.CLAIM_ACKNOWLEDGEMENT,
+            claim_root=claim_root,
+        )
+        document["approvedBy"] = "different-operator"
+        path = self.write_bundle(document)
+        self.assertTrue(u0.validate_authorization(path, require_approved=True)["approved"])
+        with self.assertRaisesRegex(ToolError, "does not match"):
+            u0.verify_claim(path, claim_root=claim_root)
+
+    def test_expired_claim_blocks_start_but_remains_valid_for_recovery(self) -> None:
+        path = self.write_bundle(authorization(u0.APPROVED_STATUS))
+        claim_root = self.claim_root
+        claimed = u0.claim_authorization(
+            path,
+            u0.CLAIM_ACKNOWLEDGEMENT,
+            claim_root=claim_root,
+        )
+        deadline = datetime.fromisoformat(claimed["deadline"])
+        after_deadline = deadline + timedelta(seconds=1)
+        with self.assertRaisesRegex(ToolError, "only recovery"):
+            u0.verify_claim(
+                path,
+                claim_root=claim_root,
+                now=after_deadline,
+            )
+        recovery = u0.verify_claim(
+            path,
+            claim_root=claim_root,
+            require_active=False,
+            now=after_deadline,
+        )
+        self.assertFalse(recovery["claimActive"])
+
+    def test_claim_state_directory_must_not_be_shared_or_symlinked(self) -> None:
+        path = self.write_bundle(authorization(u0.APPROVED_STATUS))
+        claim_root = self.claim_root
+        claim_root.mkdir(mode=0o700)
+        os.chmod(claim_root, 0o750)
+        with self.assertRaisesRegex(ToolError, "0700"):
+            u0.claim_authorization(
+                path,
+                u0.CLAIM_ACKNOWLEDGEMENT,
+                claim_root=claim_root,
+            )
+        claim_root.rmdir()
+        target = Path(self.temporary.name) / "claim-target"
+        target.mkdir(mode=0o700)
+        claim_root.symlink_to(target, target_is_directory=True)
+        with self.assertRaisesRegex(ToolError, "symlink"):
+            u0.claim_authorization(
+                path,
+                u0.CLAIM_ACKNOWLEDGEMENT,
+                claim_root=claim_root,
+            )
 
 
 if __name__ == "__main__":

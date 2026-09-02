@@ -10,7 +10,7 @@ import os
 import re
 import stat
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,10 @@ PENDING_STATUS = "PENDING_OPERATOR_APPROVAL"
 APPROVED_STATUS = "APPROVED_FOR_ONE_U0_WINDOW"
 MAX_SESSION_SECONDS = 3600
 APPROVAL_MAX_AGE_SECONDS = 86400
+CLAIM_SCHEMA_VERSION = 1
+CLAIM_STATUS = "CLAIMED_FOR_EXECUTION"
+CLAIM_ACKNOWLEDGEMENT = "I-CLAIM-ONE-U0-MANAGEMENT-PREFLIGHT-WINDOW"
+CLAIM_ROOT = Path.home() / ".local/share/eks-platform/u0-authorizations"
 BUNDLE_RE = re.compile(r"^u0-preflight-[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 WINDOW_RE = re.compile(r"^u0-[0-9]{8}-[0-9]{2}$")
 CHECKSUM_RE = re.compile(r"^([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$")
@@ -129,16 +133,182 @@ def _load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def _timestamp(value: Any, label: str) -> datetime:
+def _timestamp(value: Any, label: str, *, allow_future: bool = False) -> datetime:
     if not isinstance(value, str):
         raise ToolError(f"{label} must be timezone-qualified")
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as error:
         raise ToolError(f"{label} must be timezone-qualified") from error
-    if parsed.tzinfo is None or parsed > datetime.now(timezone.utc):
+    if parsed.tzinfo is None or (not allow_future and parsed > datetime.now(timezone.utc)):
         raise ToolError(f"{label} must be a non-future timezone-qualified time")
     return parsed
+
+
+def _claim_root(path: Path, *, create: bool) -> Path:
+    root = Path(os.path.abspath(path.expanduser()))
+    for candidate in (root, *root.parents):
+        try:
+            info = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode):
+            raise ToolError("U0 claim state path contains a symlink")
+    if create:
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        info = root.lstat()
+    except FileNotFoundError as error:
+        raise ToolError("U0 claim state directory is missing") from error
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or stat.S_IMODE(info.st_mode) != 0o700
+    ):
+        raise ToolError("U0 claim state directory must be owner-only mode 0700")
+    return root
+
+
+def _claim_path(root: Path, window_id: str) -> Path:
+    if not WINDOW_RE.fullmatch(window_id):
+        raise ToolError("U0 windowId is invalid")
+    return root / f"{window_id}.json"
+
+
+def _write_claim(path: Path, receipt: dict[str, Any]) -> None:
+    payload = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
+    try:
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+        )
+    except FileExistsError as error:
+        raise ToolError("U0 window was already claimed; reuse is forbidden") from error
+    except OSError as error:
+        raise ToolError("U0 claim receipt could not be created safely") from error
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        directory_descriptor = os.open(
+            path.parent,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        )
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
+    except OSError as error:
+        # A partial receipt deliberately remains and blocks an unsafe retry.
+        raise ToolError("U0 claim receipt durability is uncertain; reuse is forbidden") from error
+
+
+def claim_authorization(
+    path: Path,
+    acknowledgement: str,
+    *,
+    claim_root: Path = CLAIM_ROOT,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    if acknowledgement != CLAIM_ACKNOWLEDGEMENT:
+        raise ToolError("explicit single-use U0 claim acknowledgement required")
+    authorization = validate_authorization(path, require_approved=True)
+    authorization_digest = authorization.pop("_authorizationSha256")
+    wall_clock = datetime.now(timezone.utc)
+    claimed_at = now or wall_clock
+    if (
+        claimed_at.tzinfo is None
+        or abs((wall_clock - claimed_at).total_seconds()) > 1
+    ):
+        raise ToolError("U0 claim time must be current and timezone-qualified")
+    deadline = claimed_at + timedelta(seconds=MAX_SESSION_SECONDS)
+    root = _claim_root(claim_root, create=True)
+    receipt_path = _claim_path(root, authorization["windowId"])
+    receipt = {
+        "claimSchemaVersion": CLAIM_SCHEMA_VERSION,
+        "status": CLAIM_STATUS,
+        "bundle": authorization["bundle"],
+        "windowId": authorization["windowId"],
+        "authorizationSha256": authorization_digest,
+        "claimedAt": claimed_at.isoformat(),
+        "deadline": deadline.isoformat(),
+    }
+    _write_claim(receipt_path, receipt)
+    return authorization | {
+        "mode": "claim",
+        "claimed": True,
+        "claimStatus": CLAIM_STATUS,
+        "claimedAt": receipt["claimedAt"],
+        "deadline": receipt["deadline"],
+        "localAuthorizationStateMutation": True,
+        "awsApiCalls": False,
+        "kubernetesApiCalls": False,
+    }
+
+
+def verify_claim(
+    path: Path,
+    *,
+    claim_root: Path = CLAIM_ROOT,
+    require_active: bool = True,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    authorization = validate_authorization(
+        path,
+        require_approved=True,
+        allow_stale_approved=not require_active,
+    )
+    authorization_digest = authorization.pop("_authorizationSha256")
+    root = _claim_root(claim_root, create=False)
+    receipt_path = _claim_path(root, authorization["windowId"])
+    try:
+        receipt = json.loads(_read_private(receipt_path))
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ToolError("invalid U0 claim receipt; output suppressed") from error
+    expected_keys = {
+        "claimSchemaVersion",
+        "status",
+        "bundle",
+        "windowId",
+        "authorizationSha256",
+        "claimedAt",
+        "deadline",
+    }
+    if not isinstance(receipt, dict) or set(receipt) != expected_keys:
+        raise ToolError("U0 claim receipt fields differ")
+    if (
+        receipt.get("claimSchemaVersion") != CLAIM_SCHEMA_VERSION
+        or receipt.get("status") != CLAIM_STATUS
+        or receipt.get("bundle") != authorization["bundle"]
+        or receipt.get("windowId") != authorization["windowId"]
+        or receipt.get("authorizationSha256") != authorization_digest
+    ):
+        raise ToolError("U0 claim receipt does not match the approved authorization")
+    claimed_at = _timestamp(receipt.get("claimedAt"), "claimedAt")
+    deadline = _timestamp(receipt.get("deadline"), "deadline", allow_future=True)
+    if deadline != claimed_at + timedelta(seconds=MAX_SESSION_SECONDS):
+        raise ToolError("U0 claim deadline differs from the reviewed window")
+    checked_at = now or datetime.now(timezone.utc)
+    if checked_at.tzinfo is None:
+        raise ToolError("U0 claim verification time must be timezone-qualified")
+    if checked_at < claimed_at:
+        raise ToolError("U0 claim verification time precedes the claim")
+    if require_active and checked_at >= deadline:
+        raise ToolError("U0 claim window has expired; only recovery is allowed")
+    return authorization | {
+        "mode": "verify-claim",
+        "claimed": True,
+        "claimStatus": CLAIM_STATUS,
+        "claimedAt": receipt["claimedAt"],
+        "deadline": receipt["deadline"],
+        "claimActive": checked_at < deadline,
+        "localAuthorizationStateMutation": False,
+        "awsApiCalls": False,
+        "kubernetesApiCalls": False,
+    }
 
 
 def verify_checksums(directory: Path) -> int:
@@ -177,11 +347,23 @@ def _validate_candidate_inputs(directory: Path) -> None:
             raise ToolError("U0 private input contains a test placeholder")
 
 
-def validate_authorization(path: Path, require_approved: bool) -> dict[str, Any]:
+def validate_authorization(
+    path: Path,
+    require_approved: bool,
+    *,
+    allow_stale_approved: bool = False,
+) -> dict[str, Any]:
     path = Path(os.path.abspath(path.expanduser()))
     if path.name != "authorization-contract.json":
         raise ToolError("explicit authorization-contract.json path required")
-    document = _load_json(path)
+    try:
+        authorization_payload = _read_private(path)
+        document = json.loads(authorization_payload)
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ToolError("invalid private U0 JSON; output suppressed") from error
+    if not isinstance(document, dict):
+        raise ToolError("private U0 JSON must be an object")
+    authorization_digest = hashlib.sha256(authorization_payload).hexdigest()
     expected_keys = {
         "schemaVersion",
         "bundle",
@@ -264,7 +446,9 @@ def validate_authorization(path: Path, require_approved: bool) -> dict[str, Any]
             raise ToolError("approved U0 authorization must identify the reviewer")
         approved_at = _timestamp(document.get("approvedAt"), "approvedAt")
         age = (datetime.now(timezone.utc) - approved_at).total_seconds()
-        if approved_at < generated_at or age > APPROVAL_MAX_AGE_SECONDS:
+        if approved_at < generated_at or (
+            not allow_stale_approved and age > APPROVAL_MAX_AGE_SECONDS
+        ):
             raise ToolError("U0 approval must be fresh and no earlier than bundle generation")
         if any(value is not True for value in decisions.values()):
             raise ToolError("every U0 decision must be explicitly accepted")
@@ -275,6 +459,8 @@ def validate_authorization(path: Path, require_approved: bool) -> dict[str, Any]
 
     checksums = verify_checksums(path.parent)
     _validate_candidate_inputs(path.parent)
+    if hashlib.sha256(_read_private(path)).hexdigest() != authorization_digest:
+        raise ToolError("U0 authorization changed during validation")
     return {
         "bundle": bundle,
         "windowId": document["windowId"],
@@ -290,20 +476,40 @@ def validate_authorization(path: Path, require_approved: bool) -> dict[str, Any]
         "awsApiCalls": False,
         "kubernetesApiCalls": False,
         "mutationPerformed": False,
+        "_authorizationSha256": authorization_digest,
     }
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("plan", "validate-approved"))
+    parser.add_argument(
+        "mode",
+        choices=("plan", "validate-approved", "claim", "verify-claim"),
+    )
     parser.add_argument("--authorization", type=Path, required=True)
+    parser.add_argument("--acknowledge", default="")
     args = parser.parse_args(argv)
     try:
-        result = validate_authorization(
-            args.authorization,
-            require_approved=args.mode == "validate-approved",
-        )
-        result["mode"] = args.mode
+        if args.mode == "claim":
+            result = claim_authorization(
+                args.authorization,
+                args.acknowledge,
+            )
+        elif args.mode == "verify-claim":
+            if args.acknowledge:
+                raise ToolError("verify-claim does not accept an acknowledgement")
+            result = verify_claim(args.authorization)
+        else:
+            if args.acknowledge:
+                raise ToolError(f"{args.mode} does not accept an acknowledgement")
+            result = validate_authorization(
+                args.authorization,
+                require_approved=args.mode == "validate-approved",
+            )
+            result.pop("_authorizationSha256", None)
+            result["mode"] = args.mode
+            result["claimed"] = False
+            result["localAuthorizationStateMutation"] = False
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
     except (ToolError, OSError, ValueError, KeyError, TypeError):

@@ -9,27 +9,35 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from common import ToolError, find_placeholders, load_yaml
+from common import REPO_ROOT, ToolError, find_placeholders, load_yaml
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 AUTHORIZATION_TYPE = "u0-management-preflight-window"
 PENDING_STATUS = "PENDING_OPERATOR_APPROVAL"
 APPROVED_STATUS = "APPROVED_FOR_ONE_U0_WINDOW"
 MAX_SESSION_SECONDS = 3600
 APPROVAL_MAX_AGE_SECONDS = 86400
-CLAIM_SCHEMA_VERSION = 1
+CLAIM_SCHEMA_VERSION = 2
 CLAIM_STATUS = "CLAIMED_FOR_EXECUTION"
 CLAIM_ACKNOWLEDGEMENT = "I-CLAIM-ONE-U0-MANAGEMENT-PREFLIGHT-WINDOW"
 CLAIM_ROOT = Path.home() / ".local/share/eks-platform/u0-authorizations"
 BUNDLE_RE = re.compile(r"^u0-preflight-[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 WINDOW_RE = re.compile(r"^u0-[0-9]{8}-[0-9]{2}$")
 CHECKSUM_RE = re.compile(r"^([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$")
+GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+
+EXECUTION_ROOTS = (
+    "scripts/eks_lifecycle",
+    "kind-goodnotes-k8s-demo/crossplane-platform-aws-eks",
+    "kind-goodnotes-k8s-demo/crossplane-platform-aws-network",
+)
 
 REQUIRED_FILES = {
     "REVIEW_SUMMARY.md",
@@ -145,6 +153,86 @@ def _timestamp(value: Any, label: str, *, allow_future: bool = False) -> datetim
     return parsed
 
 
+def _git(*args: str) -> bytes:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            check=False,
+            timeout=15,
+            env={
+                "PATH": os.environ.get("PATH", ""),
+                "LANG": "C",
+                "LC_ALL": "C",
+                "GIT_CONFIG_NOSYSTEM": "1",
+            },
+        )
+    except (subprocess.TimeoutExpired, OSError) as error:
+        raise ToolError("local Git execution-code check was unavailable") from error
+    if result.returncode:
+        raise ToolError("local Git execution-code check failed; output suppressed")
+    return result.stdout
+
+
+def execution_code_state() -> dict[str, Any]:
+    try:
+        commit = _git("rev-parse", "--verify", "HEAD").decode("ascii").strip()
+    except UnicodeDecodeError as error:
+        raise ToolError("local Git commit identity is invalid") from error
+    if not GIT_COMMIT_RE.fullmatch(commit):
+        raise ToolError("local Git commit identity is invalid")
+
+    tracked = [
+        entry
+        for entry in _git("ls-files", "-z", "--", *EXECUTION_ROOTS).split(b"\0")
+        if entry and not entry.lower().endswith(b".md")
+    ]
+    if not tracked or tracked != sorted(set(tracked)):
+        raise ToolError("execution-code tracked file inventory is empty or ambiguous")
+    untracked = [
+        entry
+        for entry in _git(
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            "--",
+            *EXECUTION_ROOTS,
+        ).split(b"\0")
+        if entry and not entry.lower().endswith(b".md")
+    ]
+    if untracked:
+        raise ToolError("unreviewed non-Markdown execution file is present")
+
+    aggregate = hashlib.sha256()
+    for raw_path in tracked:
+        relative = Path(os.fsdecode(raw_path))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ToolError("execution-code path escaped the repository")
+        path = REPO_ROOT / relative
+        try:
+            info = path.lstat()
+        except OSError as error:
+            raise ToolError("reviewed execution file is missing") from error
+        if not stat.S_ISREG(info.st_mode):
+            raise ToolError("reviewed execution path must be a regular file")
+        payload = path.read_bytes()
+        aggregate.update(raw_path)
+        aggregate.update(b"\0")
+        aggregate.update(str(len(payload)).encode("ascii"))
+        aggregate.update(b"\0")
+        aggregate.update(hashlib.sha256(payload).digest())
+    return {
+        "gitCommit": commit,
+        "roots": list(EXECUTION_ROOTS),
+        "trackedNonMarkdownFiles": len(tracked),
+        "aggregateSha256": aggregate.hexdigest(),
+        "untrackedNonMarkdownFiles": 0,
+        "markdownDriftExcluded": True,
+    }
+
+
 def _claim_root(path: Path, *, create: bool) -> Path:
     root = Path(os.path.abspath(path.expanduser()))
     for candidate in (root, *root.parents):
@@ -233,6 +321,8 @@ def claim_authorization(
         "bundle": authorization["bundle"],
         "windowId": authorization["windowId"],
         "authorizationSha256": authorization_digest,
+        "executionGitCommit": authorization["reviewedGitCommit"],
+        "executionCodeSha256": authorization["executionCodeSha256"],
         "claimedAt": claimed_at.isoformat(),
         "deadline": deadline.isoformat(),
     }
@@ -274,6 +364,8 @@ def verify_claim(
         "bundle",
         "windowId",
         "authorizationSha256",
+        "executionGitCommit",
+        "executionCodeSha256",
         "claimedAt",
         "deadline",
     }
@@ -285,6 +377,8 @@ def verify_claim(
         or receipt.get("bundle") != authorization["bundle"]
         or receipt.get("windowId") != authorization["windowId"]
         or receipt.get("authorizationSha256") != authorization_digest
+        or receipt.get("executionGitCommit") != authorization["reviewedGitCommit"]
+        or receipt.get("executionCodeSha256") != authorization["executionCodeSha256"]
     ):
         raise ToolError("U0 claim receipt does not match the approved authorization")
     claimed_at = _timestamp(receipt.get("claimedAt"), "claimedAt")
@@ -379,6 +473,7 @@ def validate_authorization(
         "preparationEvidence",
         "requestedU0Window",
         "decisions",
+        "executionCode",
     }
     if set(document) != expected_keys:
         raise ToolError("U0 authorization fields differ from the reviewed schema")
@@ -399,6 +494,9 @@ def validate_authorization(
         or document.get("preparationEvidence") != PREPARATION_EVIDENCE
     ):
         raise ToolError("U0 authorization boundary differs from the reviewed contract")
+    actual_execution_code = execution_code_state()
+    if document.get("executionCode") != actual_execution_code:
+        raise ToolError("U0 reviewed execution code differs from the current checkout")
 
     requested = document.get("requestedU0Window")
     if not isinstance(requested, dict) or set(requested) != {
@@ -473,6 +571,13 @@ def validate_authorization(
         "awsResourceMutationAllowed": False,
         "kubernetesMutationActions": len(KUBERNETES_MUTATION_SCOPE),
         "checksumsVerified": checksums,
+        "reviewedGitCommit": actual_execution_code["gitCommit"],
+        "executionCodeSha256": actual_execution_code["aggregateSha256"],
+        "executionCodeFiles": actual_execution_code["trackedNonMarkdownFiles"],
+        "untrackedExecutionFiles": actual_execution_code[
+            "untrackedNonMarkdownFiles"
+        ],
+        "markdownDriftExcluded": actual_execution_code["markdownDriftExcluded"],
         "awsApiCalls": False,
         "kubernetesApiCalls": False,
         "mutationPerformed": False,

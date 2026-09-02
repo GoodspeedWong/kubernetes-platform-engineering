@@ -49,6 +49,7 @@ def authorization(status: str = u0.PENDING_STATUS) -> dict:
         "decisions": {
             key: True if approved else None for key in sorted(u0.DECISION_KEYS)
         },
+        "executionCode": u0.execution_code_state(),
     }
 
 
@@ -112,6 +113,36 @@ class U0AuthorizationTests(unittest.TestCase):
         path = self.write_bundle(document)
         with self.assertRaisesRegex(ToolError, "allowlist"):
             u0.validate_authorization(path, require_approved=True)
+
+    def test_execution_code_commit_digest_or_inventory_drift_fails(self) -> None:
+        for mode in ("commit", "digest", "roots", "count", "untracked"):
+            document = authorization(u0.APPROVED_STATUS)
+            execution = document["executionCode"]
+            if mode == "commit":
+                execution["gitCommit"] = "0" * 40
+            elif mode == "digest":
+                execution["aggregateSha256"] = "0" * 64
+            elif mode == "roots":
+                execution["roots"].append("unreviewed")
+            elif mode == "count":
+                execution["trackedNonMarkdownFiles"] += 1
+            else:
+                execution["untrackedNonMarkdownFiles"] = 1
+            path = self.write_bundle(document)
+            with self.subTest(mode=mode), self.assertRaisesRegex(
+                ToolError,
+                "execution code differs",
+            ):
+                u0.validate_authorization(path, require_approved=True)
+
+    def test_execution_code_state_is_commit_bound_and_excludes_markdown(self) -> None:
+        state = u0.execution_code_state()
+        self.assertRegex(state["gitCommit"], r"^[0-9a-f]{40}$")
+        self.assertRegex(state["aggregateSha256"], r"^[0-9a-f]{64}$")
+        self.assertGreater(state["trackedNonMarkdownFiles"], 0)
+        self.assertEqual(0, state["untrackedNonMarkdownFiles"])
+        self.assertTrue(state["markdownDriftExcluded"])
+        self.assertEqual(list(u0.EXECUTION_ROOTS), state["roots"])
 
     def test_missing_false_or_extra_decision_fails_closed(self) -> None:
         for mode in ("missing", "false", "extra"):

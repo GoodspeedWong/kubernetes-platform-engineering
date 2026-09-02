@@ -140,6 +140,10 @@ def _aws(
         if code and accepted_errors and code in accepted_errors:
             return None, code
         raise ToolError("AWS runtime probe failed; output suppressed")
+    # Some successful AWS Query APIs (notably ListQueues when the account has
+    # no queues) emit an empty stdout instead of an empty JSON object.
+    if not result.stdout.strip():
+        return {}, None
     try:
         return json.loads(result.stdout), None
     except json.JSONDecodeError as error:

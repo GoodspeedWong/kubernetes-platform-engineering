@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import subprocess
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -121,6 +122,15 @@ class RuntimeSessionTests(unittest.TestCase):
             with patch.object(runtime, "_aws") as aws, self.assertRaises(ToolError):
                 runtime.verify_expired(contract())
         aws.assert_not_called()
+
+    def test_successful_empty_aws_query_response_is_an_empty_object(self):
+        result = subprocess.CompletedProcess([], 0, "", "")
+        with patch.object(runtime.subprocess, "run", return_value=result):
+            document, error = runtime._aws(
+                contract(), published_bundle().execution, "sqs", "list-queues"
+            )
+        self.assertEqual({}, document)
+        self.assertIsNone(error)
 
 
 class CloseSessionTests(unittest.TestCase):

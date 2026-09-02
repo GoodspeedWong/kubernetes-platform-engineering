@@ -295,7 +295,12 @@ class P8ArgoCDTests(unittest.TestCase):
             "metadata": {"name": instance["metadata"]["name"]},
             "status": {},
         }
-        params = {"oxr": instance, "dxr": desired, "ocds": observed}
+        params = {
+            "oxr": instance,
+            "dxr": desired,
+            "ocds": observed,
+            "extraResources": render_foundation.default_extra_resources(),
+        }
         result = subprocess.run(
             [
                 "kcl",

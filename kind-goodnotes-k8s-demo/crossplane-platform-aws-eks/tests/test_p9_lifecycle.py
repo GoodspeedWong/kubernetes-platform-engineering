@@ -351,7 +351,15 @@ class P9LifecycleTests(unittest.TestCase):
             "metadata": {"name": instance["metadata"]["name"]},
             "status": {},
         }
-        return self._run_kcl(source, {"oxr": instance, "dxr": desired, "ocds": observed})
+        return self._run_kcl(
+            source,
+            {
+                "oxr": instance,
+                "dxr": desired,
+                "ocds": observed,
+                "extraResources": render_foundation.default_extra_resources(),
+            },
+        )
 
     def _run_environment_kcl(
         self, instance: dict[str, Any], observed: dict[str, Any]

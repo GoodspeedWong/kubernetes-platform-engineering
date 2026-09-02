@@ -325,7 +325,12 @@ class P7CiliumTests(unittest.TestCase):
             "metadata": {"name": self.foundation_instance["metadata"]["name"]},
             "status": {},
         }
-        params = {"oxr": self.foundation_instance, "dxr": desired, "ocds": observed}
+        params = {
+            "oxr": self.foundation_instance,
+            "dxr": desired,
+            "ocds": observed,
+            "extraResources": render_foundation.default_extra_resources(),
+        }
         result = subprocess.run(
             [
                 "kcl",

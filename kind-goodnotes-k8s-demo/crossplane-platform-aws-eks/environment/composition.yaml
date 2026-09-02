@@ -121,7 +121,6 @@ spec:
                             kind = "XNetwork"
                             name = network_name
                         }
-                        nodeImageRef = params.nodeImageRef
                         platformReleaseRef = params.platformReleaseRef
                         providerConfigRef = params.providerConfigRef
                         region = params.region

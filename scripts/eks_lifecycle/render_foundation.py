@@ -14,13 +14,34 @@ from common import EKS_ROOT, REPO_ROOT, ToolError, load_yaml
 
 
 FOUNDATION_ROOT = EKS_ROOT / "foundation"
+CATALOG_FIXTURES = EKS_ROOT / "tests" / "fixtures" / "p2"
 RESOURCE_NAME_ANNOTATION = "krm.kcl.dev/composition-resource-name"
+
+
+def default_extra_resources() -> dict[str, Any]:
+    return {
+        "platform-release": [
+            {
+                "Resource": load_yaml(
+                    CATALOG_FIXTURES / "platform-release-compatible.yaml"
+                )
+            }
+        ],
+        "node-image": [
+            {
+                "Resource": load_yaml(
+                    CATALOG_FIXTURES / "node-image-compatible.yaml"
+                )
+            }
+        ],
+    }
 
 
 def render(
     instance: dict[str, Any],
     observed: dict[str, Any] | None = None,
     standalone_names: bool = False,
+    extra_resources: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     composition = load_yaml(FOUNDATION_ROOT / "composition.yaml")
     try:
@@ -33,7 +54,14 @@ def render(
         }
     except (KeyError, TypeError) as error:
         raise ToolError(f"invalid XClusterFoundation render input: {error}") from error
-    params = {"oxr": instance, "dxr": desired, "ocds": observed or {}}
+    params = {
+        "oxr": instance,
+        "dxr": desired,
+        "ocds": observed or {},
+        "extraResources": default_extra_resources()
+        if extra_resources is None
+        else extra_resources,
+    }
     result = subprocess.run(
         [
             "kcl",
@@ -88,6 +116,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="add deterministic test-only names for API server dry-run validation",
     )
+    parser.add_argument(
+        "--platform-release",
+        type=Path,
+        default=CATALOG_FIXTURES / "platform-release-compatible.yaml",
+        help="reviewed EnvironmentConfig used to resolve platformReleaseRef",
+    )
+    parser.add_argument(
+        "--node-image",
+        type=Path,
+        default=CATALOG_FIXTURES / "node-image-compatible.yaml",
+        help="reviewed EnvironmentConfig used to resolve nodeImageRef",
+    )
     return parser.parse_args(argv)
 
 
@@ -96,9 +136,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         instance = load_yaml(args.instance)
         observed = load_yaml(args.observed) if args.observed else None
+        extra_resources = {
+            "platform-release": [{"Resource": load_yaml(args.platform_release)}],
+            "node-image": [{"Resource": load_yaml(args.node_image)}],
+        }
         print(
             json.dumps(
-                render(instance, observed, args.standalone_names),
+                render(instance, observed, args.standalone_names, extra_resources),
                 indent=2,
                 sort_keys=True,
             )

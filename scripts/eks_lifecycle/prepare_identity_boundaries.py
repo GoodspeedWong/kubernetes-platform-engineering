@@ -57,6 +57,7 @@ def controller_policies(environment: str, account: str) -> dict[str, Any]:
             "environmentRef": {"name": environment}, "networkRef": {"name": environment + "-network"},
             "managementNamespace": "crossplane-system", "region": "us-east-1",
             "kubernetesVersion": load_yaml(EKS_ROOT / "versions.lock.yaml")["targets"]["workloadPlane"]["eksKubernetes"],
+            "platformReleaseRef": {"name": "test-only-platform-release"},
             "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "boundary-compiler-only"},
             "lifecycle": {"deletionProtection": True},
             "access": {"adminPrincipalArn": contract.provider_role_arn,

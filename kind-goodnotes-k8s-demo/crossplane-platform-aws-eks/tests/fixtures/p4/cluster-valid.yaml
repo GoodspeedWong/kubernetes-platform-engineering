@@ -22,9 +22,6 @@ spec:
     networkRef:
       kind: XNetwork
       name: eks-dev-spot-network
-    nodeImageRef:
-      kind: EnvironmentConfig
-      name: test-only-node-image
     platformReleaseRef:
       kind: EnvironmentConfig
       name: test-only-platform-release

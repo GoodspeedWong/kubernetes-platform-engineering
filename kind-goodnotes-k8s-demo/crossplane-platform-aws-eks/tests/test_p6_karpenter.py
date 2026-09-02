@@ -223,7 +223,7 @@ class P6KarpenterTests(unittest.TestCase):
         spec = manifest["spec"]
         self.assertEqual("AL2023", spec["amiFamily"])
         self.assertEqual(
-            [{"alias": self.lock["nodeImages"]["al2023"]["alias"]}],
+            [{"id": "ami-0123456789abcdef0"}],
             spec["amiSelectorTerms"],
         )
         self.assertEqual("eks-dev-spot-ec2-node", spec["instanceProfile"])
@@ -250,6 +250,70 @@ class P6KarpenterTests(unittest.TestCase):
         self.assertFalse(
             any(key.startswith("kubernetes.io/cluster/") for key in spec["tags"])
         )
+
+    def test_catalog_refs_drive_foundation_versions_and_fail_closed(self) -> None:
+        extra = render_foundation.default_extra_resources()
+        platform = extra["platform-release"][0]["Resource"]["spec"]["data"]
+        node_image = extra["node-image"][0]["Resource"]["spec"]["data"]
+        self.assertIn('kind = "ExtraResources"', self.source)
+        self.assertIn("platform_release_ref.name", self.source)
+        self.assertIn("node_image_ref.name", self.source)
+        self.assertIn('type = "CatalogResolved"', self.source)
+        self.assertNotIn(
+            'karpenter_node_image_alias = "al2023@v20260728"', self.source
+        )
+        self.assertEqual(
+            platform["karpenter"]["crdChart"],
+            self.initial_resources["karpenter-crds-release"]["spec"][
+                "forProvider"
+            ]["chart"]["version"],
+        )
+        self.assertEqual(
+            node_image["images"]["amd64"]["amiId"],
+            self.staged_resources["ec2-node-class"]["spec"]["forProvider"][
+                "manifest"
+            ]["spec"]["amiSelectorTerms"][0]["id"],
+        )
+
+        changed = render_foundation.default_extra_resources()
+        changed["node-image"][0]["Resource"]["spec"]["data"]["images"][
+            "amd64"
+        ]["amiId"] = "ami-0fedcba9876543210"
+        changed_render = render_foundation.render(
+            copy.deepcopy(self.foundation_instance),
+            copy.deepcopy(self.crds_ready_observed),
+            extra_resources=changed,
+        )
+        changed_resources = self._resources_by_name(changed_render)
+        self.assertEqual(
+            [{"id": "ami-0fedcba9876543210"}],
+            changed_resources["ec2-node-class"]["spec"]["forProvider"][
+                "manifest"
+            ]["spec"]["amiSelectorTerms"],
+        )
+
+        missing = render_foundation.default_extra_resources()
+        missing["node-image"] = None
+        with self.assertRaisesRegex(
+            common.ToolError,
+            "nodeImageRef must resolve exactly one EnvironmentConfig",
+        ):
+            render_foundation.render(
+                copy.deepcopy(self.foundation_instance), extra_resources=missing
+            )
+
+        incompatible = render_foundation.default_extra_resources()
+        incompatible["node-image"][0]["Resource"]["spec"]["data"]["images"][
+            "amd64"
+        ]["alias"] = "al2023@v20260827"
+        with self.assertRaisesRegex(
+            common.ToolError,
+            "node image alias is not locked",
+        ):
+            render_foundation.render(
+                copy.deepcopy(self.foundation_instance),
+                extra_resources=incompatible,
+            )
 
     def test_node_pool_is_dynamic_flexible_bounded_and_spot_only(self) -> None:
         summary = validate_spot_contract.validate_spot_contract(

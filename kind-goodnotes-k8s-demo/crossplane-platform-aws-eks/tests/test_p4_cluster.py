@@ -176,6 +176,48 @@ class P4ClusterTests(unittest.TestCase):
         self.assertNotIn("kube-proxy", lower_source)
         self.assertNotIn("aws-auth", lower_source)
 
+    def test_platform_release_ref_drives_coredns_and_cluster_does_not_own_node_images(self) -> None:
+        xrd = common.load_yaml(EKS_ROOT / "cluster" / "xrd.yaml")
+        parameters = xrd["spec"]["versions"][0]["schema"]["openAPIV3Schema"][
+            "properties"
+        ]["spec"]["properties"]["parameters"]
+        self.assertNotIn("nodeImageRef", parameters["required"])
+        self.assertNotIn("nodeImageRef", parameters["properties"])
+        self.assertNotIn(
+            "nodeImageRef", self.initial_resources["eks-control-plane"]["spec"]
+        )
+        self.assertIn('kind = "ExtraResources"', self.source)
+        self.assertIn("platform_release_ref.name", self.source)
+        self.assertIn('type = "CatalogResolved"', self.source)
+
+        extra = render_cluster.default_extra_resources()
+        expected = extra["platform-release"][0]["Resource"]["spec"]["data"][
+            "coreDNSAddon"
+        ]
+        addon = self.initial_resources["coredns-addon"]
+        self.assertEqual(expected, addon["spec"]["forProvider"]["addonVersion"])
+
+        missing = {"platform-release": None}
+        with self.assertRaisesRegex(
+            common.ToolError,
+            "platformReleaseRef must resolve exactly one EnvironmentConfig",
+        ):
+            render_cluster.render(
+                copy.deepcopy(self.instance), extra_resources=missing
+            )
+
+        incompatible = render_cluster.default_extra_resources()
+        incompatible["platform-release"][0]["Resource"]["spec"]["data"][
+            "coreDNSAddon"
+        ] = "v0.0.0-eksbuild.0"
+        with self.assertRaisesRegex(
+            common.ToolError,
+            "CoreDNS add-on is not locked",
+        ):
+            render_cluster.render(
+                copy.deepcopy(self.instance), extra_resources=incompatible
+            )
+
     def test_dedicated_security_group_is_owned_here_and_network_is_reference_only(self) -> None:
         security_group = self.initial_resources["node-security-group"]
         tags = security_group["spec"]["forProvider"]["tags"]
@@ -707,7 +749,12 @@ class P4ClusterTests(unittest.TestCase):
             "metadata": {"name": self.instance["metadata"]["name"]},
             "status": {},
         }
-        params = {"oxr": self.instance, "dxr": desired, "ocds": observed}
+        params = {
+            "oxr": self.instance,
+            "dxr": desired,
+            "ocds": observed,
+            "extraResources": render_cluster.default_extra_resources(),
+        }
         result = subprocess.run(
             [
                 "kcl",

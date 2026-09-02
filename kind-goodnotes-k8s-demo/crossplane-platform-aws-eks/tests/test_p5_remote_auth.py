@@ -520,7 +520,16 @@ class P5RemoteAuthenticationTests(unittest.TestCase):
             "metadata": {"name": instance["metadata"]["name"]},
             "status": {},
         }
-        params = {"oxr": instance, "dxr": desired, "ocds": observed}
+        if instance["kind"] == "XEKSCluster":
+            extra_resources = render_cluster.default_extra_resources()
+        else:
+            extra_resources = render_foundation.default_extra_resources()
+        params = {
+            "oxr": instance,
+            "dxr": desired,
+            "ocds": observed,
+            "extraResources": extra_resources,
+        }
         result = subprocess.run(
             [
                 "kcl",

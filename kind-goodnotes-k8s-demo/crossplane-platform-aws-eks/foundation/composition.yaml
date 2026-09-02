@@ -29,6 +29,83 @@ spec:
             _dxr = option("params").dxr
             params = oxr.spec.parameters
 
+            extra_resources = option("params")?.extraResources or {}
+            platform_release_ref = params.platformReleaseRef
+            node_image_ref = params.nodeImageRef
+            catalog_requirements = {
+                apiVersion = "meta.krm.kcl.dev/v1alpha1"
+                kind = "ExtraResources"
+                requirements = {
+                    "platform-release" = {
+                        apiVersion = "apiextensions.crossplane.io/v1beta1"
+                        kind = "EnvironmentConfig"
+                        matchName = platform_release_ref.name
+                    }
+                    "node-image" = {
+                        apiVersion = "apiextensions.crossplane.io/v1beta1"
+                        kind = "EnvironmentConfig"
+                        matchName = node_image_ref.name
+                    }
+                }
+            }
+            platform_release_fetch_complete = "platform-release" in extra_resources
+            node_image_fetch_complete = "node-image" in extra_resources
+            catalog_fetch_complete = platform_release_fetch_complete and node_image_fetch_complete
+            platform_release_matches = (extra_resources["platform-release"] or []) if platform_release_fetch_complete else []
+            node_image_matches = (extra_resources["node-image"] or []) if node_image_fetch_complete else []
+            catalog_resolved = catalog_fetch_complete and len(platform_release_matches) == 1 and len(node_image_matches) == 1
+
+            _karpenter_crd_chart_version = ""
+            _karpenter_chart_version = ""
+            _karpenter_app_version = ""
+            _karpenter_node_image_alias = ""
+            _karpenter_node_image_id = ""
+            _cilium_chart_version = ""
+            _cilium_app_version = ""
+            _argocd_chart_version = ""
+            _argocd_app_version = ""
+            if catalog_fetch_complete:
+                assert len(platform_release_matches) == 1, "platformReleaseRef must resolve exactly one EnvironmentConfig"
+                assert len(node_image_matches) == 1, "nodeImageRef must resolve exactly one EnvironmentConfig"
+                _platform_release_resource = platform_release_matches[0].Resource
+                _node_image_resource = node_image_matches[0].Resource
+                assert _platform_release_resource?.apiVersion == "apiextensions.crossplane.io/v1beta1", "platformReleaseRef resolved an unsupported apiVersion"
+                assert _platform_release_resource?.kind == "EnvironmentConfig", "platformReleaseRef resolved an unsupported kind"
+                assert _platform_release_resource?.metadata?.name == platform_release_ref.name, "platformReleaseRef resolved the wrong EnvironmentConfig"
+                assert _node_image_resource?.apiVersion == "apiextensions.crossplane.io/v1beta1", "nodeImageRef resolved an unsupported apiVersion"
+                assert _node_image_resource?.kind == "EnvironmentConfig", "nodeImageRef resolved an unsupported kind"
+                assert _node_image_resource?.metadata?.name == node_image_ref.name, "nodeImageRef resolved the wrong EnvironmentConfig"
+                _platform_release_data = _platform_release_resource?.spec?.data or {}
+                _node_image_data = _node_image_resource?.spec?.data or {}
+                _node_image_amd64 = _node_image_data?.images?.amd64 or {}
+                assert _platform_release_data?.schemaVersion == 1, "platform release schemaVersion must be 1"
+                assert _platform_release_data?.kubernetes == params.kubernetesVersion, "platform release kubernetes version is incompatible"
+                assert _platform_release_data?.karpenter?.crdChart == "1.14.1", "platform release Karpenter CRD chart is not locked by this Composition revision"
+                assert _platform_release_data?.karpenter?.controllerChart == "1.14.1", "platform release Karpenter controller chart is not locked by this Composition revision"
+                assert _platform_release_data?.karpenter?.app == "1.14.1", "platform release Karpenter app is not locked by this Composition revision"
+                assert _platform_release_data?.cilium?.chart == "1.20.1", "platform release Cilium chart is not locked by this Composition revision"
+                assert _platform_release_data?.cilium?.app == "1.20.1", "platform release Cilium app is not locked by this Composition revision"
+                assert _platform_release_data?.argoCD?.chart == "10.4.0", "platform release Argo CD chart is not locked by this Composition revision"
+                assert _platform_release_data?.argoCD?.app == "v3.5.1", "platform release Argo CD app is not locked by this Composition revision"
+                assert _platform_release_data?.coreDNSAddon == "v1.14.3-eksbuild.3", "platform release CoreDNS add-on is not locked by this Composition revision"
+                assert _node_image_data?.schemaVersion == 1, "node image schemaVersion must be 1"
+                assert _node_image_data?.region == params.region, "node image region is incompatible"
+                assert _node_image_data?.kubernetes == params.kubernetesVersion, "node image kubernetes version is incompatible"
+                assert _node_image_amd64?.family == "AL2023", "node image family must be AL2023"
+                assert _node_image_amd64?.release == "v20260728", "node image release is not locked by this Composition revision"
+                assert _node_image_amd64?.releaseVersion == "1.35.6-20260728", "node image releaseVersion is not locked by this Composition revision"
+                assert _node_image_amd64?.alias == "al2023@v20260728", "node image alias is not locked by this Composition revision"
+                assert regex.match(_node_image_amd64?.amiId or "", "^ami-[0-9a-f]{17}$"), "node image amiId must be a regional AWS AMI identifier"
+                _karpenter_crd_chart_version = _platform_release_data.karpenter.crdChart
+                _karpenter_chart_version = _platform_release_data.karpenter.controllerChart
+                _karpenter_app_version = _platform_release_data.karpenter.app
+                _karpenter_node_image_alias = _node_image_amd64.alias
+                _karpenter_node_image_id = _node_image_amd64.amiId
+                _cilium_chart_version = _platform_release_data.cilium.chart
+                _cilium_app_version = _platform_release_data.cilium.app
+                _argocd_chart_version = _platform_release_data.argoCD.chart
+                _argocd_app_version = _platform_release_data.argoCD.app
+
             foundation_xr_name = oxr.metadata.name
             environment_name = params.environmentRef.name
             cluster_name = params.clusterRef.name
@@ -36,16 +113,11 @@ spec:
             remote_kubeconfig_secret_name = environment_name + "-eks-access"
             kubernetes_provider_config_name = environment_name + "-kubernetes"
             helm_provider_config_name = environment_name + "-helm"
-            karpenter_chart_version = "1.14.1"
-            karpenter_node_image_alias = "al2023@v20260728"
             karpenter_namespace = "karpenter"
             karpenter_node_class_name = "spot-general"
             karpenter_node_pool_name = "spot-general"
             karpenter_instance_profile_name = environment_name + "-ec2-node"
-            cilium_chart_version = "1.20.1"
             cilium_namespace = "kube-system"
-            argocd_chart_version = "10.4.0"
-            argocd_app_version = "v3.5.1"
             argocd_namespace = "argocd"
             argocd_project_name = "business"
             gitops_destination_namespace = "apps"
@@ -251,7 +323,7 @@ spec:
                             name = "karpenter-crd"
                             repository = "oci://public.ecr.aws/karpenter"
                             digest = "sha256:c05c566740802506a34f3500b33e2fa3c9254f60469e84e5e294a3bd8adefb9f"
-                            version = karpenter_chart_version
+                            version = _karpenter_crd_chart_version
                         }
                         namespace = karpenter_namespace
                         skipCreateNamespace = False
@@ -302,7 +374,7 @@ spec:
                             name = "karpenter"
                             repository = "oci://public.ecr.aws/karpenter"
                             digest = "sha256:91434e00fb102d6ee0d1bd34a4457a32fe01a8fa833fe1a2a37da4f50272079b"
-                            version = karpenter_chart_version
+                            version = _karpenter_chart_version
                         }
                         namespace = karpenter_namespace
                         skipCreateNamespace = False
@@ -340,7 +412,7 @@ spec:
                             controller = {
                                 image = {
                                     repository = "public.ecr.aws/karpenter/controller"
-                                    tag = "1.14.1"
+                                    tag = _karpenter_app_version
                                     digest = "sha256:445baefaaa689029cc12ac1f659b916b0b82fb14308ce536f8521fcf079116fa"
                                 }
                                 env = [
@@ -402,7 +474,7 @@ spec:
                 }
                 spec = {
                     amiFamily = "AL2023"
-                    amiSelectorTerms = [{alias = karpenter_node_image_alias}]
+                    amiSelectorTerms = [{id = _karpenter_node_image_id}]
                     blockDeviceMappings = [{
                         deviceName = "/dev/xvda"
                         rootVolume = True
@@ -572,7 +644,7 @@ spec:
                             name = "cilium"
                             repository = "oci://quay.io/cilium/charts"
                             digest = "sha256:906ce40d35daad838d12add8a5ba7033e767767f51799a93c7eace2cec9cdc05"
-                            version = cilium_chart_version
+                            version = _cilium_chart_version
                         }
                         namespace = cilium_namespace
                         skipCreateNamespace = True
@@ -640,7 +712,7 @@ spec:
                                 digest = "sha256:ae9ea21f7427fe24bc6ea7247eb552157a1b0a431744045d3f641545ca71d11b"
                                 pullPolicy = "IfNotPresent"
                                 repository = "quay.io/cilium/cilium"
-                                tag = "v1.20.1"
+                                tag = "v" + _cilium_app_version
                                 useDigest = True
                             }
                             ipam = {mode = "eni"}
@@ -681,7 +753,7 @@ spec:
                                     awsDigest = "sha256:7cf0cb0e6584f72ca8de951a1be03829f69fcaeba69dc6c7856fc4470545acd7"
                                     pullPolicy = "IfNotPresent"
                                     repository = "quay.io/cilium/operator"
-                                    tag = "v1.20.1"
+                                    tag = "v" + _cilium_app_version
                                     useDigest = True
                                 }
                                 nodeSelector = {
@@ -924,7 +996,7 @@ spec:
                     image = {
                         imagePullPolicy = "IfNotPresent"
                         repository = "quay.io/argoproj/argocd"
-                        tag = "v3.5.1@sha256:0deb1a1c917629b960ead995ae3b6069450a866992676599658687ef9a641ee8"
+                        tag = _argocd_app_version + "@sha256:0deb1a1c917629b960ead995ae3b6069450a866992676599658687ef9a641ee8"
                     }
                     networkPolicy = {create = True, defaultDenyIngress = False}
                     nodeSelector = {
@@ -1112,7 +1184,7 @@ spec:
                             name = "argo-cd"
                             repository = "oci://ghcr.io/argoproj/argo-helm"
                             digest = "sha256:8ff18ee7a22670305555167ea31f24a88e2f912cf0a872f852e1880886d4c308"
-                            version = argocd_chart_version
+                            version = _argocd_chart_version
                         }
                         namespace = argocd_namespace
                         skipCreateNamespace = False
@@ -1254,7 +1326,7 @@ spec:
             gitops_bootstrap_resources = [gitops_bootstrap] if gitops_bootstrap_stage_open else []
             _gitops_bootstrap_conditions = ocds["gitops-bootstrap"].Resource?.status?.conditions or [] if "gitops-bootstrap" in ocds else []
             gitops_bootstrap_ready = len([condition for condition in _gitops_bootstrap_conditions if condition.type == "Ready" and condition.status == "True"]) > 0
-            foundation_ready = retirement_stage == "Active" and remote_auth_ready and karpenter_ready and cilium_ready and network_approval_valid and argocd_prerequisites_ready and argocd_project_ready and (not gitops_configured or gitops_bootstrap_ready)
+            foundation_ready = catalog_resolved and retirement_stage == "Active" and remote_auth_ready and karpenter_ready and cilium_ready and network_approval_valid and argocd_prerequisites_ready and argocd_project_ready and (not gitops_configured or gitops_bootstrap_ready)
 
             _dxr.status = _dxr.status or {}
             _dxr.status.references = {
@@ -1281,18 +1353,28 @@ spec:
                 inventorySha256 = expected_inventory_sha[retirement_stage]
             }
             if karpenter_controller_ready:
-                _dxr.status.actualVersions.karpenter = karpenter_chart_version
+                _dxr.status.actualVersions.karpenter = _karpenter_chart_version
             if ec2_node_class_ready:
-                _dxr.status.actualVersions.nodeImage = karpenter_node_image_alias
+                _dxr.status.actualVersions.nodeImage = _karpenter_node_image_alias
             if cilium_ready:
-                _dxr.status.actualVersions.cilium = cilium_chart_version
+                _dxr.status.actualVersions.cilium = _cilium_chart_version
             if argocd_release_ready:
-                _dxr.status.actualVersions.argoCD = argocd_app_version
+                _dxr.status.actualVersions.argoCD = _argocd_app_version
 
             conditions = {
                 apiVersion = "meta.krm.kcl.dev/v1alpha1"
                 kind = "Conditions"
                 conditions = [
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "CatalogResolved"
+                            status = "True" if catalog_resolved else "False"
+                            reason = "Available" if catalog_resolved else "WaitingForCatalog"
+                            message = "The referenced platform release and node image catalogs were resolved and match this Composition revision." if catalog_resolved else "No remote foundation resources are declared until both catalog references resolve exactly one compatible EnvironmentConfig."
+                        }
+                    },
                     {
                         target = "Composite"
                         force = True
@@ -1431,7 +1513,7 @@ spec:
             network_approval_resources = [network_uat_approval] if network_approval_stage_open else []
             foundation_usage_resources = [foundation_uses_cluster] if foundation_usage_stage_open else []
 
-            items = [
+            foundation_resources = [
                 *remote_connection_owner_resources,
                 *karpenter_crd_resources,
                 *karpenter_post_crd_resources,
@@ -1441,6 +1523,5 @@ spec:
                 *gitops_bootstrap_resources,
                 *foundation_usage_resources,
                 *retirement_evidence_resources,
-                conditions,
-                _dxr,
             ]
+            items = [catalog_requirements, *foundation_resources, conditions, _dxr] if catalog_resolved else [catalog_requirements, conditions, _dxr]

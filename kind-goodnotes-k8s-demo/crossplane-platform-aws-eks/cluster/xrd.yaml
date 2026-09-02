@@ -33,7 +33,6 @@ spec:
                     - lifecycle
                     - managementNamespace
                     - networkRef
-                    - nodeImageRef
                     - platformReleaseRef
                     - providerConfigRef
                     - region
@@ -113,21 +112,6 @@ spec:
                       enum:
                         - "1.35"
                     platformReleaseRef:
-                      type: object
-                      required:
-                        - kind
-                        - name
-                      properties:
-                        kind:
-                          type: string
-                          enum:
-                            - EnvironmentConfig
-                        name:
-                          type: string
-                          minLength: 1
-                          maxLength: 253
-                          pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
-                    nodeImageRef:
                       type: object
                       required:
                         - kind

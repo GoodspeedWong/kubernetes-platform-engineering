@@ -29,6 +29,36 @@ spec:
             _dxr = option("params").dxr
             params = oxr.spec.parameters
 
+            extra_resources = option("params")?.extraResources or {}
+            platform_release_ref = params.platformReleaseRef
+            catalog_requirements = {
+                apiVersion = "meta.krm.kcl.dev/v1alpha1"
+                kind = "ExtraResources"
+                requirements = {
+                    "platform-release" = {
+                        apiVersion = "apiextensions.crossplane.io/v1beta1"
+                        kind = "EnvironmentConfig"
+                        matchName = platform_release_ref.name
+                    }
+                }
+            }
+            platform_release_fetch_complete = "platform-release" in extra_resources
+            platform_release_matches = (extra_resources["platform-release"] or []) if platform_release_fetch_complete else []
+            platform_release_resolved = platform_release_fetch_complete and len(platform_release_matches) == 1
+            _platform_release_data = {}
+            _coredns_addon_version = ""
+            if platform_release_fetch_complete:
+                assert len(platform_release_matches) == 1, "platformReleaseRef must resolve exactly one EnvironmentConfig"
+                _platform_release_resource = platform_release_matches[0].Resource
+                assert _platform_release_resource?.apiVersion == "apiextensions.crossplane.io/v1beta1", "platformReleaseRef resolved an unsupported apiVersion"
+                assert _platform_release_resource?.kind == "EnvironmentConfig", "platformReleaseRef resolved an unsupported kind"
+                assert _platform_release_resource?.metadata?.name == platform_release_ref.name, "platformReleaseRef resolved the wrong EnvironmentConfig"
+                _platform_release_data = _platform_release_resource?.spec?.data or {}
+                assert _platform_release_data?.schemaVersion == 1, "platform release schemaVersion must be 1"
+                assert _platform_release_data?.kubernetes == params.kubernetesVersion, "platform release kubernetes version is incompatible"
+                assert _platform_release_data?.coreDNSAddon == "v1.14.3-eksbuild.3", "platform release CoreDNS add-on is not locked by this Composition revision"
+                _coredns_addon_version = _platform_release_data.coreDNSAddon
+
             cluster_xr_name = oxr.metadata.name
             cluster_name = cluster_xr_name
             environment_name = params.environmentRef.name
@@ -498,7 +528,7 @@ spec:
                     **managed_spec
                     forProvider = {
                         addonName = "coredns"
-                        addonVersion = "v1.14.3-eksbuild.3"
+                        addonVersion = _coredns_addon_version
                         clusterNameSelector = eks_cluster_selector
                         preserve = False
                         region = region
@@ -1552,7 +1582,7 @@ spec:
             native_deletion_protection_disabled = _eks_control_plane_ready and _native_deletion_protection_observed == False
             _cluster_api_ready = _connection_material_ready and _oidc_issuer != ""
             _fargate_ready = _observed_fargate?.status == "ACTIVE"
-            infrastructure_ready = _cluster_api_ready and _fargate_ready and len(_missing_ready_names) == 0
+            infrastructure_ready = platform_release_resolved and _cluster_api_ready and _fargate_ready and len(_missing_ready_names) == 0
 
             _dxr.status = _dxr.status or {}
             _dxr.status.clusterName = cluster_name
@@ -1599,13 +1629,23 @@ spec:
             infrastructure_condition = {
                 type = "InfrastructureReady"
                 status = "True" if infrastructure_ready else "False"
-                reason = "Available" if infrastructure_ready else ("WaitingForEKSAPI" if not _cluster_api_ready else ("WaitingForFargate" if not _fargate_ready else "WaitingForIdentityAndInterruptionInfrastructure"))
-                message = "EKS API, identities, Fargate bootstrap, and interruption infrastructure are ready; CoreDNS readiness is evaluated separately." if infrastructure_ready else "Waiting for the EKS API, identity, Fargate, access, or interruption resources; CoreDNS Pending does not block this condition."
+                reason = "Available" if infrastructure_ready else ("WaitingForCatalog" if not platform_release_resolved else ("WaitingForEKSAPI" if not _cluster_api_ready else ("WaitingForFargate" if not _fargate_ready else "WaitingForIdentityAndInterruptionInfrastructure")))
+                message = "EKS API, identities, Fargate bootstrap, and interruption infrastructure are ready; CoreDNS readiness is evaluated separately." if infrastructure_ready else ("Waiting for the reviewed platformReleaseRef EnvironmentConfig before declaring cluster resources." if not platform_release_resolved else "Waiting for the EKS API, identity, Fargate, access, or interruption resources; CoreDNS Pending does not block this condition.")
             }
             conditions = {
                 apiVersion = "meta.krm.kcl.dev/v1alpha1"
                 kind = "Conditions"
                 conditions = [
+                    {
+                        target = "Composite"
+                        force = True
+                        condition = {
+                            type = "CatalogResolved"
+                            status = "True" if platform_release_resolved else "False"
+                            reason = "Available" if platform_release_resolved else "WaitingForPlatformRelease"
+                            message = "The referenced platform release catalog was resolved and matches this Composition revision." if platform_release_resolved else "No AWS resources are declared until platformReleaseRef resolves exactly one compatible EnvironmentConfig."
+                        }
+                    },
                     {
                         target = "Composite"
                         force = True
@@ -1654,7 +1694,8 @@ spec:
                 ]
             }
 
-            items = static_resources + oidc_resources + irsa_resources + usages + [conditions, _dxr]
+            cluster_resources = static_resources + oidc_resources + irsa_resources + usages
+            items = [catalog_requirements, *cluster_resources, conditions, _dxr] if platform_release_resolved else [catalog_requirements, conditions, _dxr]
     - step: automatically-detect-ready-cluster-resources
       functionRef:
         name: function-auto-ready

@@ -43,6 +43,7 @@ class P1ToolingTests(unittest.TestCase):
             "validate_static.py",
             "validate_network_contract.py",
             "validate_spot_contract.py",
+            "validate_u0_authorization.py",
             "plan_retirement.py",
         ):
             with self.subTest(script=script):

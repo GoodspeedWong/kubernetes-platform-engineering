@@ -460,9 +460,12 @@ def publish_session(contract: BootstrapContract, sessions: TargetSessions) -> No
     for extra in (["--dry-run=server"], []):
         validate_targets(sessions)
         _run_json(base + [operation, "-f", "-", *extra, "-o", 'jsonpath={"true"}'], input_text=payload)
-    # Do not rely on SDK file caching behavior; rollout is mandatory after rotation.
+    # Do not rely on SDK file caching behavior. Opening the manual window must
+    # also start the exact reviewed consumers when the shared control plane is
+    # normally held at zero replicas; otherwise a published session would look
+    # successful without any Provider ever using it.
     for deployment in deployments:
-        patch = {"spec": {"template": {"metadata": {"annotations": {
+        patch = {"spec": {"replicas": 1, "template": {"metadata": {"annotations": {
             "platform.aws.goodnotes.io/session-refreshed-at": datetime.now(timezone.utc).isoformat()}}}}}
         _run_json(base + ["patch", "deployment", deployment["metadata"]["name"], "--type=merge",
             "-p", json.dumps(patch), "-o", 'jsonpath={"true"}'])

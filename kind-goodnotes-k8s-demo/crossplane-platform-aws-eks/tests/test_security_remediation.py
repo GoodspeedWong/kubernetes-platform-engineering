@@ -269,6 +269,9 @@ class SecurityRemediationTests(unittest.TestCase):
         self.assertIn("replace", commands[3])
         self.assertEqual("42", json.loads(run.call_args_list[3].kwargs["input_text"])["metadata"]["resourceVersion"])
         self.assertEqual(len(credentials.PROVIDERS), sum("patch" in c for c in commands))
+        patches = [json.loads(call.args[0][call.args[0].index("-p") + 1])
+                   for call in run.call_args_list if "patch" in call.args[0]]
+        self.assertTrue(all(patch["spec"]["replicas"] == 1 for patch in patches))
         self.assertNotIn("secret-test-only", json.dumps(commands))
         self.assertIn(r'\"items\"', commands[1][-1])
 

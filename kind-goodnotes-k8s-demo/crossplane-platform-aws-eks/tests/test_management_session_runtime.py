@@ -141,18 +141,56 @@ class CloseSessionTests(unittest.TestCase):
         def kube(_contract, *args, body=None):
             calls.append(args)
             if "get" in args and "secret" in args:
+                secret_reads = [
+                    item for item in calls if "get" in item and "secret" in item
+                ]
+                if len(secret_reads) == 1:
+                    return {
+                        "metadata": metadata,
+                        "data": published_secret()["data"],
+                    }
                 return {"metadata": metadata, "data": {}}
             return {}
 
         with patch.object(credentials, "session_metadata", side_effect=[metadata, metadata, None]):
             with patch.object(closer, "_deployments", side_effect=[deployments(1), deployments(0)]):
                 with patch.object(closer, "_kube", side_effect=kube):
-                    result = closer.close_session(contract(), closer.ACKNOWLEDGEMENT)
+                    with patch.object(closer, "_delete_secret") as delete:
+                        result = closer.close_session(contract(), closer.ACKNOWLEDGEMENT)
         self.assertEqual(7, result["providersStopped"])
         self.assertTrue(result["clusterCredentialMaterialRemoved"])
         self.assertFalse(result["awsSessionRevoked"])
         operations = [args[2] for args in calls]
-        self.assertEqual(["patch"] * 8 + ["get", "delete"], operations)
+        self.assertEqual(["patch"] * 7 + ["get", "patch", "get"], operations)
+        delete.assert_called_once_with(contract())
+
+    def test_close_retries_after_secret_was_already_scrubbed(self):
+        metadata = published_secret()["metadata"]
+        calls: list[tuple[str, ...]] = []
+
+        def kube(_contract, *args, body=None):
+            calls.append(args)
+            if "get" in args and "secret" in args:
+                return {"metadata": metadata}
+            return {}
+
+        with patch.object(credentials, "session_metadata", side_effect=[metadata, metadata, None]):
+            with patch.object(closer, "_deployments", side_effect=[deployments(0), deployments(0)]):
+                with patch.object(closer, "_kube", side_effect=kube):
+                    with patch.object(closer, "_delete_secret") as delete:
+                        result = closer.close_session(contract(), closer.ACKNOWLEDGEMENT)
+        self.assertTrue(result["clusterCredentialMaterialRemoved"])
+        self.assertEqual(["patch"] * 7 + ["get"], [args[2] for args in calls])
+        delete.assert_called_once_with(contract())
+
+    def test_secret_delete_does_not_require_json_output(self):
+        completed = subprocess.CompletedProcess([], 0, "secret deleted", "")
+        with patch.object(closer.subprocess, "run", return_value=completed) as run:
+            closer._delete_secret(contract())
+        command = run.call_args.args[0]
+        self.assertIn("delete", command)
+        self.assertIn(credentials.REMOTE_SECRET_NAME, command)
+        self.assertNotIn("-o", command)
 
     def test_close_requires_explicit_ack_before_reading_cluster(self):
         with patch.object(credentials, "session_metadata") as read:

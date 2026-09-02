@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -26,6 +27,32 @@ def _kube(contract: credentials.BootstrapContract, *args: str, body: Any | None 
 
 def _deployments(contract: credentials.BootstrapContract) -> dict[str, dict[str, Any]]:
     return credentials.reviewed_provider_deployments(contract)
+
+
+def _delete_secret(contract: credentials.BootstrapContract) -> None:
+    try:
+        result = subprocess.run(
+            [
+                "kubectl",
+                "--context",
+                contract.context,
+                "--namespace",
+                credentials.SOURCE_NAMESPACE,
+                "delete",
+                "secret",
+                credentials.REMOTE_SECRET_NAME,
+                "--wait=true",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=45,
+            env=credentials._clean_env(),
+        )
+    except (subprocess.TimeoutExpired, OSError) as error:
+        raise ToolError("kubectl unavailable or timed out; output suppressed") from error
+    if result.returncode:
+        raise ToolError(f"kubectl failed (exit {result.returncode}); output suppressed")
 
 
 def close_session(
@@ -74,22 +101,6 @@ def close_session(
     current = credentials.session_metadata(contract.context)
     if current is None or current.get("uid") != metadata.get("uid"):
         raise ToolError("session Secret ownership changed during close")
-    scrub = [
-        {"op": "test", "path": "/metadata/uid", "value": current["uid"]},
-        {"op": "test", "path": "/metadata/resourceVersion", "value": current["resourceVersion"]},
-        {"op": "replace", "path": "/data", "value": {}},
-    ]
-    _kube(
-        contract,
-        "--namespace",
-        credentials.SOURCE_NAMESPACE,
-        "patch",
-        "secret",
-        credentials.REMOTE_SECRET_NAME,
-        "--type=json",
-        "-p",
-        json.dumps(scrub),
-    )
     scrubbed = _kube(
         contract,
         "--namespace",
@@ -98,17 +109,44 @@ def close_session(
         "secret",
         credentials.REMOTE_SECRET_NAME,
     )
+    if scrubbed["metadata"]["uid"] != metadata["uid"]:
+        raise ToolError("session Secret ownership changed before scrub")
+    if scrubbed.get("data"):
+        scrub = [
+            {
+                "op": "test",
+                "path": "/metadata/uid",
+                "value": scrubbed["metadata"]["uid"],
+            },
+            {
+                "op": "test",
+                "path": "/metadata/resourceVersion",
+                "value": scrubbed["metadata"]["resourceVersion"],
+            },
+            {"op": "replace", "path": "/data", "value": {}},
+        ]
+        _kube(
+            contract,
+            "--namespace",
+            credentials.SOURCE_NAMESPACE,
+            "patch",
+            "secret",
+            credentials.REMOTE_SECRET_NAME,
+            "--type=json",
+            "-p",
+            json.dumps(scrub),
+        )
+        scrubbed = _kube(
+            contract,
+            "--namespace",
+            credentials.SOURCE_NAMESPACE,
+            "get",
+            "secret",
+            credentials.REMOTE_SECRET_NAME,
+        )
     if scrubbed["metadata"]["uid"] != metadata["uid"] or scrubbed.get("data"):
         raise ToolError("session Secret was not scrubbed; deletion refused")
-    _kube(
-        contract,
-        "--namespace",
-        credentials.SOURCE_NAMESPACE,
-        "delete",
-        "secret",
-        credentials.REMOTE_SECRET_NAME,
-        "--wait=true",
-    )
+    _delete_secret(contract)
     if credentials.session_metadata(contract.context) is not None:
         raise ToolError("session Secret still exists after exact deletion")
     return {

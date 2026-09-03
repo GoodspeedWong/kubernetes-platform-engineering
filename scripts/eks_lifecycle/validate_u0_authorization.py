@@ -74,6 +74,7 @@ KUBERNETES_MUTATION_SCOPE = (
     "pause and later restore exactly three reviewed shared XRs and 73 owned Objects",
     "create or replace, then scrub and delete crossplane-system/eks-platform-aws-session",
     "apply only reviewed management definitions, dependencies, explicit RBAC, and the two approved catalogs",
+    "pin exactly three reviewed Crossplane Function package references from their locked tags to immutable digests",
     "patch only the 14 reviewed controller Deployments for bounded startup and final zero-replica restore",
     "submit server-side dry-run admission requests that persist no objects",
 )
@@ -82,6 +83,7 @@ ALLOWED_ACTIONS = (
     "protect and later restore the existing shared management-plane objects",
     "publish the already reviewed on-demand session Secret for at most 60 minutes",
     "apply only the reviewed management definitions, dependencies, explicit RBAC, and approved platform/node catalogs",
+    "pin the three existing Crossplane Functions to their reviewed immutable package digests before starting Crossplane core",
     "start only the locked Crossplane, Function, and reviewed Provider controllers",
     "perform server-side dry-run admission checks without persisting test resources",
     "perform STS AssumeRole and read-only AWS/Kubernetes checks",

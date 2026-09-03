@@ -5,6 +5,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -151,6 +152,7 @@ class U0ManagementPreflightTests(unittest.TestCase):
         self.assertEqual(14, result["controllerDeployments"])
         self.assertEqual(3, result["sharedXRsToProtect"])
         self.assertEqual(73, result["ownedObjectsToProtect"])
+        self.assertEqual(3, result["functionPackagePins"])
 
     def test_run_claims_before_baseline_and_always_cleans_success(self) -> None:
         operations = FakeOperations()
@@ -208,6 +210,79 @@ class U0ManagementPreflightTests(unittest.TestCase):
         claim.assert_called_once()
         self.assertEqual(["baseline"], operations.calls)
         self.assertNotIn("CLEANUP_STARTED", journal.events)
+        self.assertEqual("BASELINE_REJECTED_NO_MUTATION", journal.events[-1])
+
+    def test_function_packages_migrate_only_from_exact_locked_tags_to_digests(self) -> None:
+        operations = runner.RealOperations()
+        reviewed = replace(contract(), controller_names=runner.controller_inventory())
+        packages = runner.function_package_contracts()
+        deployments = {
+            name: {
+                "metadata": {
+                    "name": name,
+                    "ownerReferences": (
+                        [
+                            {
+                                "kind": "FunctionRevision",
+                                "name": name,
+                                "controller": True,
+                            }
+                        ]
+                        if name.startswith("function-")
+                        else []
+                    ),
+                },
+                "spec": {"replicas": 0},
+                "status": {},
+            }
+            for name in runner.controller_inventory()
+        }
+
+        def function_items(use_digests: bool):
+            return {
+                "items": [
+                    {
+                        "metadata": {"name": name},
+                        "spec": {
+                            "package": item[
+                                "digestReference" if use_digests else "taggedReference"
+                            ],
+                            "packagePullPolicy": "IfNotPresent",
+                        },
+                        "status": {
+                            "currentIdentifier": item["taggedReference"],
+                            "resolvedPackage": item["taggedReference"],
+                            "currentRevision": item["revision"],
+                        },
+                    }
+                    for name, item in packages.items()
+                ]
+            }
+
+        with (
+            patch.object(operations, "_deployment_map", return_value=deployments),
+            patch.object(runner.provider_rbac, "verify_inventory"),
+            patch.object(operations, "_kube", return_value=function_items(False)),
+        ):
+            operations._assert_controller_identity(
+                reviewed,
+                allow_tagged_functions=True,
+            )
+            with self.assertRaisesRegex(ToolError, "package/revision"):
+                operations._assert_controller_identity(reviewed)
+
+        with (
+            patch.object(operations, "_deployment_map", return_value=deployments),
+            patch.object(runner.provider_rbac, "verify_inventory"),
+            patch.object(operations, "_kube", return_value=function_items(True)),
+        ):
+            operations._assert_controller_identity(reviewed)
+
+        documents = runner.function_documents()
+        self.assertEqual(3, len(documents))
+        self.assertTrue(
+            all("@sha256:" in item["spec"]["package"] for item in documents)
+        )
 
     def test_failure_after_protection_runs_cleanup_and_requires_no_retry(self) -> None:
         operations = FakeOperations(fail_at="apply")
@@ -334,12 +409,21 @@ class U0ManagementPreflightTests(unittest.TestCase):
                 "_apply_document",
                 side_effect=lambda _c, document, dry_run: documents.append((document, dry_run)),
             ),
+            patch.object(
+                runner,
+                "function_documents",
+                return_value=[
+                    {"kind": "Function", "metadata": {"name": f"function-{index}"}}
+                    for index in range(3)
+                ],
+            ),
+            patch.object(operations, "_assert_controller_identity"),
             patch.object(operations, "_assert_no_runtime_instances", return_value=0),
         ):
             operations.apply_definitions(reviewed)
         self.assertEqual(len(runner.APPLY_KUSTOMIZATIONS) * 2, len(kustomizations))
-        self.assertEqual(3, sum(dry for _, dry in documents))
-        self.assertEqual(3, sum(not dry for _, dry in documents))
+        self.assertEqual(6, sum(dry for _, dry in documents))
+        self.assertEqual(6, sum(not dry for _, dry in documents))
         self.assertNotIn(reviewed.environment_candidate, [item for item, _ in documents])
 
     def test_low_level_apply_guards_refuse_environment_persistence_and_unreviewed_paths(self) -> None:
@@ -354,6 +438,23 @@ class U0ManagementPreflightTests(unittest.TestCase):
                 reviewed,
                 reviewed.environment_candidate,
                 dry_run=False,
+            )
+        command.assert_not_called()
+
+        with (
+            patch.object(runner.authorization_tool, "verify_claim"),
+            patch.object(runner, "_run_suppressed") as command,
+            self.assertRaisesRegex(ToolError, "Function document differs"),
+        ):
+            operations._apply_document(
+                reviewed,
+                {
+                    "apiVersion": "pkg.crossplane.io/v1",
+                    "kind": "Function",
+                    "metadata": {"name": "function-kcl"},
+                    "spec": {"package": "unreviewed"},
+                },
+                dry_run=True,
             )
         command.assert_not_called()
 

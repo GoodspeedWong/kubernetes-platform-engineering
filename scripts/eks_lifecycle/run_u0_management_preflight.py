@@ -3,9 +3,10 @@
 
 Plan mode is local-only. Run mode claims one reviewed authorization before the
 first API call, protects the shared Crossplane objects, installs only reviewed
-management definitions/catalogs, opens the separately approved A05 session,
-starts exactly 14 locked controllers, performs read-only verification, and
-always attempts cleanup. It never applies the XEKSEnvironment candidate.
+management definitions/catalogs, pins the three existing Functions to reviewed
+digests, opens the separately approved A05 session, starts exactly 14 locked
+controllers, performs read-only verification, and always attempts cleanup. It
+never applies the XEKSEnvironment candidate.
 """
 
 from __future__ import annotations
@@ -63,6 +64,7 @@ XR_RESOURCES = (
 AWS_MANAGED_MARKERS = (".aws.upbound.io/", ".aws.m.upbound.io/")
 JOURNAL_EVENTS = {
     "CLAIMED",
+    "BASELINE_REJECTED_NO_MUTATION",
     "BASELINE_VERIFIED",
     "PROTECTION_STARTED",
     "PROTECTED",
@@ -104,15 +106,67 @@ def _package_digest(reference: Any, label: str) -> str:
     return match.group(1)
 
 
+def function_package_contracts() -> dict[str, dict[str, str]]:
+    packages = load_yaml(LOCK_FILE).get("packages", {})
+    result: dict[str, dict[str, str]] = {}
+    for name, lock_key in FUNCTION_LOCKS.items():
+        locked = packages.get(lock_key, {})
+        reference = locked.get("reference")
+        version = locked.get("version")
+        digest = _package_digest(reference, name)
+        if not isinstance(version, str) or not re.fullmatch(
+            r"v[0-9]+\.[0-9]+\.[0-9]+", version
+        ):
+            raise ToolError(f"{name} package version is invalid")
+        repository = reference.rsplit("@sha256:", 1)[0]
+        result[name] = {
+            "digestReference": reference,
+            "taggedReference": f"{repository}:{version}",
+            "revision": f"{name}-{digest[:12]}",
+            "version": version,
+        }
+    return result
+
+
+def function_documents() -> list[dict[str, Any]]:
+    documents = []
+    for name, reviewed in function_package_contracts().items():
+        documents.append(
+            {
+                "apiVersion": "pkg.crossplane.io/v1",
+                "kind": "Function",
+                "metadata": {
+                    "name": name,
+                    "annotations": {
+                        "platform.aws.goodnotes.io/version": reviewed["version"]
+                    },
+                    "labels": {
+                        "platform.aws.goodnotes.io/managed-by": "platform-bootstrap",
+                        "platform.aws.goodnotes.io/resource-role": "shared-function",
+                    },
+                },
+                "spec": {
+                    "package": reviewed["digestReference"],
+                    "packagePullPolicy": "IfNotPresent",
+                    "revisionActivationPolicy": "Automatic",
+                    "revisionHistoryLimit": 1,
+                    "runtimeConfigRef": {
+                        "apiVersion": "pkg.crossplane.io/v1beta1",
+                        "kind": "DeploymentRuntimeConfig",
+                        "name": "default",
+                    },
+                },
+            }
+        )
+    return documents
+
+
 def controller_inventory() -> tuple[str, ...]:
     reviewed = provider_rbac.inventory()
     provider_names = [item["revision"] for item in reviewed["providers"]]
-    lock = load_yaml(LOCK_FILE)
-    packages = lock.get("packages", {})
-    function_names = []
-    for name, lock_key in FUNCTION_LOCKS.items():
-        digest = _package_digest(packages.get(lock_key, {}).get("reference"), name)
-        function_names.append(f"{name}-{digest[:12]}")
+    function_names = [
+        item["revision"] for item in function_package_contracts().values()
+    ]
     result = tuple(sorted(("crossplane", *provider_names, *function_names)))
     if len(result) != 14 or len(set(result)) != 14:
         raise ToolError("reviewed U0 controller inventory must contain exactly 14 deployments")
@@ -206,6 +260,7 @@ def public_plan(contract: U0Contract) -> dict[str, Any]:
         "ownedObjectsToProtect": 73,
         "kustomizationApplyEntrypoints": len(APPLY_KUSTOMIZATIONS),
         "catalogManifests": 2,
+        "functionPackagePins": len(FUNCTION_LOCKS),
         "environmentCandidateApplyAllowed": False,
         "environmentCandidateServerDryRunOnly": True,
         "awsResourceMutationAllowed": False,
@@ -356,13 +411,17 @@ class RealOperations:
             if item.get("metadata", {}).get("name")
         }
 
-    def _assert_controller_identity(self, contract: U0Contract) -> dict[str, dict[str, Any]]:
+    def _assert_controller_identity(
+        self,
+        contract: U0Contract,
+        *,
+        allow_tagged_functions: bool = False,
+    ) -> dict[str, dict[str, Any]]:
         deployments = self._deployment_map(contract)
         if set(deployments) != set(contract.controller_names):
             raise ToolError("live controller Deployment inventory differs from the reviewed 14")
         provider_rbac.verify_inventory(provider_rbac.inventory())
-        lock = load_yaml(LOCK_FILE)
-        packages = lock["packages"]
+        reviewed_functions = function_package_contracts()
         functions = self._kube(contract, "get", "functions.pkg.crossplane.io")
         by_name = {
             item.get("metadata", {}).get("name", ""): item
@@ -370,15 +429,25 @@ class RealOperations:
         }
         if set(by_name) != set(FUNCTION_LOCKS):
             raise ToolError("live Function inventory differs from the reviewed three")
-        for name, lock_key in FUNCTION_LOCKS.items():
+        for name, reviewed in reviewed_functions.items():
             function = by_name[name]
-            expected_package = packages[lock_key]["reference"]
-            digest = _package_digest(expected_package, name)
-            expected_revision = f"{name}-{digest[:12]}"
-            if (
-                function.get("spec", {}).get("package") != expected_package
-                or function.get("status", {}).get("currentRevision") != expected_revision
+            spec = function.get("spec", {})
+            package = spec.get("package")
+            tagged = package == reviewed["taggedReference"]
+            if package != reviewed["digestReference"] and not (
+                allow_tagged_functions and tagged
             ):
+                raise ToolError("live Function package/revision differs from the lock")
+            if tagged and (
+                spec.get("packagePullPolicy") != "IfNotPresent"
+                or function.get("status", {}).get("currentIdentifier")
+                != reviewed["taggedReference"]
+                or function.get("status", {}).get("resolvedPackage")
+                != reviewed["taggedReference"]
+            ):
+                raise ToolError("legacy tagged Function is not safe for digest migration")
+            expected_revision = reviewed["revision"]
+            if function.get("status", {}).get("currentRevision") != expected_revision:
                 raise ToolError("live Function package/revision differs from the lock")
             owners = [
                 owner
@@ -444,8 +513,16 @@ class RealOperations:
             time.sleep(2)
         raise ToolError("reviewed EKS lifecycle APIs were not established in time")
 
-    def _assert_stopped(self, contract: U0Contract) -> None:
-        deployments = self._assert_controller_identity(contract)
+    def _assert_stopped(
+        self,
+        contract: U0Contract,
+        *,
+        allow_tagged_functions: bool = False,
+    ) -> None:
+        deployments = self._assert_controller_identity(
+            contract,
+            allow_tagged_functions=allow_tagged_functions,
+        )
         for name in contract.controller_names:
             item = deployments[name]
             if (
@@ -455,7 +532,7 @@ class RealOperations:
                 raise ToolError("reviewed controller is not fully stopped")
 
     def baseline(self, contract: U0Contract) -> dict[str, Any]:
-        self._assert_stopped(contract)
+        self._assert_stopped(contract, allow_tagged_functions=True)
         if credentials.session_metadata(contract.bootstrap.context) is not None:
             raise ToolError("U0 baseline contains a published session Secret")
         managed_count = self._assert_no_runtime_instances(contract)
@@ -516,8 +593,19 @@ class RealOperations:
     ) -> None:
         authorization_tool.verify_claim(contract.authorization_path)
         kind = document.get("kind")
-        if kind not in {"ClusterProviderConfig", "EnvironmentConfig", "XEKSEnvironment"}:
+        if kind not in {
+            "ClusterProviderConfig",
+            "EnvironmentConfig",
+            "Function",
+            "XEKSEnvironment",
+        }:
             raise ToolError("U0 apply document kind is not reviewed")
+        if kind == "Function":
+            reviewed = {
+                item["metadata"]["name"]: item for item in function_documents()
+            }
+            if document != reviewed.get(document.get("metadata", {}).get("name")):
+                raise ToolError("U0 Function document differs from the reviewed digest pin")
         if kind == "XEKSEnvironment" and not dry_run:
             raise ToolError("U0 forbids persisting the environment candidate")
         command = [
@@ -539,7 +627,8 @@ class RealOperations:
             load_yaml(contract.bundle_directory / "platform-release.candidate.yaml"),
             load_yaml(contract.bundle_directory / "node-image.candidate.yaml"),
         ]
-        documents = [provider_config, *catalogs]
+        functions = function_documents()
+        documents = [provider_config, *catalogs, *functions]
         if any(find_placeholders(document) for document in documents):
             raise ToolError("U0 reviewed apply document contains a placeholder")
 
@@ -553,6 +642,7 @@ class RealOperations:
             self._apply_kustomization(contract, root, dry_run=False)
         for document in documents:
             self._apply_document(contract, document, dry_run=False)
+        self._assert_controller_identity(contract, allow_tagged_functions=False)
         self._assert_no_runtime_instances(contract)
 
     def open_session(
@@ -657,6 +747,7 @@ class RealOperations:
 
     def verify(self, contract: U0Contract) -> dict[str, Any]:
         authorization_tool.verify_claim(contract.authorization_path)
+        self._assert_controller_identity(contract, allow_tagged_functions=False)
         runtime = runtime_verifier.verify_active(contract.bootstrap)
         online = preflight.online_read_only_checks(contract.bootstrap.context)
         self._wait_lifecycle_apis(contract)
@@ -704,7 +795,7 @@ class RealOperations:
             )
         if self._protection_state(contract):
             self._harden(contract, "restore")
-        self._assert_stopped(contract)
+        self._assert_stopped(contract, allow_tagged_functions=True)
         if credentials.session_metadata(contract.bootstrap.context) is not None:
             raise ToolError("session Secret remains after U0 cleanup")
         return {
@@ -804,6 +895,10 @@ def execute(
         if isinstance(failure, KeyboardInterrupt):
             raise failure
         if not (protection_attempted or session_attempted or controllers_attempted):
+            try:
+                journal.append("BASELINE_REJECTED_NO_MUTATION")
+            except BaseException:
+                pass
             raise ToolError(
                 "U0 baseline failed after claim; no API mutation was attempted"
             ) from failure

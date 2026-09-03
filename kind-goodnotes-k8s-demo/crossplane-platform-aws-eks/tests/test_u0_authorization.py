@@ -105,7 +105,7 @@ class U0AuthorizationTests(unittest.TestCase):
         self.assertTrue(result["approved"])
         self.assertEqual(11, len(u0.DECISION_KEYS))
         self.assertFalse(result["awsResourceMutationAllowed"])
-        self.assertEqual(5, result["kubernetesMutationActions"])
+        self.assertEqual(6, result["kubernetesMutationActions"])
 
     def test_scope_drift_fails_even_with_refreshed_checksums(self) -> None:
         document = authorization(u0.APPROVED_STATUS)

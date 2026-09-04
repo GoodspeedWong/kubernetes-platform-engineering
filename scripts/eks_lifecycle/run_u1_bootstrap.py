@@ -114,7 +114,8 @@ class U1Contract:
     region: str
     account_id: str
     audit_profile: str
-    expected_public_ip: str
+    expected_host_public_ip: str
+    expected_kind_public_ip: str
     node_image_id: str
     controller_names: tuple[str, ...]
     run_id: str
@@ -200,7 +201,8 @@ def load_contract(
         region=region,
         account_id=authorization["accountId"],
         audit_profile=authorization["auditProfile"],
-        expected_public_ip=authorization["hostPublicEgressIp"],
+        expected_host_public_ip=authorization["hostPublicEgressIp"],
+        expected_kind_public_ip=authorization["kindPublicEgressIp"],
         node_image_id=node_image_id,
         controller_names=u0_runner.controller_inventory(),
         run_id=f"a05-{match.group(1)}-u1-{match.group(2)}",
@@ -453,6 +455,19 @@ class RealOperations(u0_runner.RealOperations):
                     "docker",
                     "exec",
                     node,
+                    "env",
+                    "-u",
+                    "HTTP_PROXY",
+                    "-u",
+                    "HTTPS_PROXY",
+                    "-u",
+                    "ALL_PROXY",
+                    "-u",
+                    "http_proxy",
+                    "-u",
+                    "https_proxy",
+                    "-u",
+                    "all_proxy",
                     "curl",
                     "-fsS",
                     "--max-time",
@@ -466,13 +481,29 @@ class RealOperations(u0_runner.RealOperations):
                     "docker",
                     "exec",
                     node,
+                    "env",
+                    "-u",
+                    "HTTP_PROXY",
+                    "-u",
+                    "HTTPS_PROXY",
+                    "-u",
+                    "ALL_PROXY",
+                    "-u",
+                    "http_proxy",
+                    "-u",
+                    "https_proxy",
+                    "-u",
+                    "all_proxy",
                     "wget",
                     "-qO-",
                     "https://checkip.amazonaws.com",
                 ]
             )
-        if host != contract.expected_public_ip or kind_ip != contract.expected_public_ip:
-            raise ToolError("U1 host or KinD egress IP differs from the approved /32")
+        if (
+            host != contract.expected_host_public_ip
+            or kind_ip != contract.expected_kind_public_ip
+        ):
+            raise ToolError("U1 host or KinD egress IP differs from the approved /32s")
         return {"host": host, "kind": kind_ip}
 
     def _tagged_count(
@@ -686,7 +717,8 @@ class RealOperations(u0_runner.RealOperations):
             "awsManagedResources": 0,
             "nonAwsManagedResources": len(managed),
             "targetConflicts": conflicts,
-            "egressMatched": egress["host"] == egress["kind"] == contract.expected_public_ip,
+            "hostEgressMatched": egress["host"] == contract.expected_host_public_ip,
+            "kindEgressMatched": egress["kind"] == contract.expected_kind_public_ip,
             "accountMatched": True,
             "spotQuotaAtLeastNodePoolLimit": True,
             "nodeImageAvailable": True,
@@ -998,8 +1030,15 @@ class RealOperations(u0_runner.RealOperations):
             or access.get("bootstrapClusterCreatorAdminPermissions") is not False
             or vpc_config.get("endpointPrivateAccess") is not True
             or vpc_config.get("endpointPublicAccess") is not True
-            or vpc_config.get("publicAccessCidrs")
-            != [f"{contract.expected_public_ip}/32"]
+            or sorted(vpc_config.get("publicAccessCidrs", []))
+            != sorted(
+                authorization_tool.expected_public_access_cidrs(
+                    {
+                        "hostPublicEgressIp": contract.expected_host_public_ip,
+                        "kindPublicEgressIp": contract.expected_kind_public_ip,
+                    }
+                )
+            )
             or (cluster.get("computeConfig") or {}).get("enabled") is True
         ):
             raise ToolError("U1 EKS control plane differs from the reviewed contract")

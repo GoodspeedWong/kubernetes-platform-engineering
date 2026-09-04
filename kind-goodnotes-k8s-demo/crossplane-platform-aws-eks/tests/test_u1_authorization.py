@@ -328,6 +328,21 @@ class U1AuthorizationTests(unittest.TestCase):
         with self.assertRaisesRegex(ToolError, "public endpoint CIDR"):
             self.validate(path)
 
+    def test_distinct_host_and_kind_egress_require_two_exact_slash32s(self) -> None:
+        snapshot_document = snapshot()
+        snapshot_document["kindPublicEgressIp"] = "203.0.113.12"
+        payload = environment().replace(
+            b"publicAccessCidrs: [203.0.113.10/32]",
+            b"publicAccessCidrs: [203.0.113.10/32, 203.0.113.12/32]",
+        )
+        path = self.write_bundle(
+            authorization(),
+            snapshot_document=snapshot_document,
+            environment_payload=payload,
+        )
+        result = self.validate(path)
+        self.assertFalse(result["approved"])
+
     def test_snapshot_conflict_staleness_and_quota_fail_closed(self) -> None:
         for mode in ("conflict", "stale", "quota", "kind-ip"):
             item = snapshot()

@@ -81,7 +81,7 @@ REQUIRED_FILES = {
 DECISION_KEYS = {
     "U0EvidenceAcceptedAndClaimsNotReusable",
     "ExactAccountRegionEnvironmentAndSingleOwnerRoot",
-    "CurrentHostAndKindEgressSlash32MustMatchAtExecution",
+    "CurrentHostAndKindEgressSlash32sMustMatchAtExecution",
     "CrossplaneControllersAreTheOnlyAwsMutationPath",
     "PersistentBillableResourcesContinueAfterControllersPark",
     "SevenDaySeventyUsdSoftBudgetHasNoAutomaticHardStop",
@@ -268,6 +268,15 @@ def _account_from_role_arn(value: Any, label: str) -> str:
     return match.group(1)
 
 
+def expected_public_access_cidrs(snapshot: dict[str, Any]) -> list[str]:
+    result: list[str] = []
+    for key in ("hostPublicEgressIp", "kindPublicEgressIp"):
+        cidr = f"{snapshot.get(key)}/32"
+        if cidr not in result:
+            result.append(cidr)
+    return result
+
+
 def _validate_catalog(document: Any, label: str) -> str:
     u0_authorization.validate_catalog_candidate(document, label)
     if find_placeholders(document):
@@ -366,9 +375,11 @@ def _validate_environment(directory: Path, bundle: str, snapshot: dict[str, Any]
     }
     if account_ids != {snapshot.get("accountId")}:
         raise ToolError("U1 principal account differs from the snapshot")
-    expected_cidr = f"{snapshot.get('hostPublicEgressIp')}/32"
-    if not _strict_equal(access.get("publicAccessCidrs"), [expected_cidr]):
-        raise ToolError("U1 public endpoint CIDR differs from the observed host /32")
+    expected_cidrs = expected_public_access_cidrs(snapshot)
+    if not _strict_equal(access.get("publicAccessCidrs"), expected_cidrs):
+        raise ToolError(
+            "U1 public endpoint CIDRs differ from the observed host and KinD /32s"
+        )
     network = parameters.get("network")
     if not isinstance(network, dict) or set(network) != {
         "cidrBlock",
@@ -477,8 +488,6 @@ def _validate_snapshot(document: dict[str, Any], *, allow_stale: bool) -> dateti
         or document.get("environment") != "eks-dev-spot"
         or host_ip.version != 4
         or kind_ip.version != 4
-        or document.get("hostPublicEgressIp")
-        != document.get("kindPublicEgressIp")
         or document.get("availabilityZones") != ["us-east-1a", "us-east-1b"]
         or not _strict_equal(
             document.get("targetNameConflicts"),

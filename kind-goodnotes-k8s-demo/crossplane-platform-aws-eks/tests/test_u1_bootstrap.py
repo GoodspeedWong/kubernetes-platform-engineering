@@ -83,7 +83,8 @@ def contract() -> runner.U1Contract:
         region="us-east-1",
         account_id="123456789012",
         audit_profile="warlock-cli-codex-admin",
-        expected_public_ip="203.0.113.10",
+        expected_host_public_ip="203.0.113.10",
+        expected_kind_public_ip="203.0.113.10",
         node_image_id="ami-0123456789abcdef0",
         controller_names=(
             "crossplane",
@@ -598,7 +599,8 @@ class U1BootstrapTests(unittest.TestCase):
             "region": reviewed.region,
             "accountId": reviewed.account_id,
             "auditProfile": reviewed.audit_profile,
-            "hostPublicEgressIp": reviewed.expected_public_ip,
+            "hostPublicEgressIp": reviewed.expected_host_public_ip,
+            "kindPublicEgressIp": reviewed.expected_kind_public_ip,
         }
         node_catalog = {
             "data": {"images": {"amd64": {"amiId": reviewed.node_image_id}}}

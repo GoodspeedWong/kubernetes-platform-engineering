@@ -7,9 +7,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -207,6 +208,41 @@ class U1BootstrapTests(unittest.TestCase):
         self.assertFalse(result["automaticCloudDeletion"])
         self.assertFalse(result["networkApprovalOrGitBootstrap"])
         self.assertEqual(14, result["controllerDeployments"])
+        self.assertTrue(result["executionDeadlineEnforced"])
+        self.assertTrue(result["cleanupRunsOutsideActiveDeadline"])
+
+    def test_deadline_guard_arms_and_disarms_the_process_timer(self) -> None:
+        previous_handler = object()
+        with (
+            patch.object(runner.signal, "getitimer", return_value=(0.0, 0.0)),
+            patch.object(runner.signal, "getsignal", return_value=previous_handler),
+            patch.object(runner.signal, "signal") as set_handler,
+            patch.object(runner.signal, "setitimer") as set_timer,
+        ):
+            with runner._bounded_execution_window(3000):
+                pass
+
+        self.assertEqual(
+            [
+                call(runner.signal.ITIMER_REAL, 3000.0),
+                call(runner.signal.ITIMER_REAL, 0.0),
+            ],
+            set_timer.call_args_list,
+        )
+        self.assertEqual(previous_handler, set_handler.call_args_list[-1].args[1])
+
+    def test_deadline_guard_refuses_to_replace_an_existing_timer(self) -> None:
+        with (
+            patch.object(runner.signal, "getitimer", return_value=(1.0, 0.0)),
+            patch.object(runner.signal, "signal") as set_handler,
+            patch.object(runner.signal, "setitimer") as set_timer,
+            self.assertRaisesRegex(ToolError, "existing process deadline"),
+        ):
+            with runner._bounded_execution_window(3000):
+                pass
+
+        set_handler.assert_not_called()
+        set_timer.assert_not_called()
 
     def test_claim_precedes_baseline_and_success_always_parks(self) -> None:
         operations = FakeOperations()
@@ -273,6 +309,77 @@ class U1BootstrapTests(unittest.TestCase):
         self.assertEqual("U1_BOOTSTRAP_PENDING_CONTINUATION", report["status"])
         self.assertIn("MONITOR_WINDOW_ENDED", journal.events)
         self.assertEqual("CLEANUP_COMPLETE", journal.events[-1])
+
+    def test_active_execution_deadline_is_disarmed_before_cleanup(self) -> None:
+        operations = FakeOperations()
+        events: list[str] = []
+        original_cleanup = operations.cleanup
+
+        @contextmanager
+        def bounded(seconds: int):
+            self.assertEqual(runner.authorization_tool.MAX_EXECUTION_SECONDS, seconds)
+            events.append("armed")
+            try:
+                yield
+            finally:
+                events.append("disarmed")
+
+        def cleanup(*args, **kwargs):
+            events.append("cleanup")
+            return original_cleanup(*args, **kwargs)
+
+        operations.cleanup = cleanup
+        with patch.object(runner, "_bounded_execution_window", side_effect=bounded):
+            result, _, report = self.run_with(operations)
+
+        self.assertEqual(["armed", "disarmed", "cleanup"], events)
+        self.assertTrue(result["executionDeadlineEnforced"])
+        self.assertTrue(result["cleanupRunsOutsideActiveDeadline"])
+        self.assertEqual(
+            runner.authorization_tool.MAX_EXECUTION_SECONDS,
+            report["maximumExecutionSeconds"],
+        )
+        self.assertFalse(report["executionDeadlineExceeded"])
+
+    def test_execution_deadline_expiry_parks_and_preserves_environment(self) -> None:
+        operations = FakeOperations()
+        reviewed = contract()
+        journal = FakeJournal()
+        reports: list[dict] = []
+
+        @contextmanager
+        def expires(_seconds: int):
+            yield
+            raise runner.ExecutionDeadlineExceeded("reviewed deadline expired")
+
+        with (
+            patch.object(runner, "load_contract", return_value=reviewed),
+            patch.object(runner.authorization_tool, "claim_authorization"),
+            patch.object(runner.authorization_tool, "verify_claim"),
+            patch.object(runner.Journal, "create", return_value=journal),
+            patch.object(runner, "_bounded_execution_window", side_effect=expires),
+            patch.object(
+                runner,
+                "_write_private_json",
+                side_effect=lambda _path, value: reports.append(value)
+                or Path("result.json"),
+            ),
+            self.assertRaisesRegex(ToolError, "environment was preserved"),
+        ):
+            runner.execute(
+                reviewed,
+                "source-profile",
+                "warlock-cli-codex-admin",
+                runner.RUN_ACKNOWLEDGEMENT,
+                operations=operations,
+            )
+
+        self.assertIn("EXECUTION_DEADLINE_EXCEEDED", journal.events)
+        self.assertEqual("FAILED_CLEANUP_COMPLETE", journal.events[-1])
+        self.assertEqual("cleanup", operations.calls[-1])
+        self.assertEqual("uid-1", operations.cleanup_uid)
+        self.assertTrue(reports[0]["executionDeadlineExceeded"])
+        self.assertTrue(reports[0]["cleanupRunsOutsideActiveDeadline"])
 
     def test_baseline_failure_consumes_claim_without_cleanup_or_mutation(self) -> None:
         reviewed = contract()

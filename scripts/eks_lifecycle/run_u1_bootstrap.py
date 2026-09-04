@@ -19,14 +19,17 @@ import ipaddress
 import json
 import os
 import re
+import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from common import REPO_ROOT, ToolError, load_yaml
 import renew_management_credentials as credentials
@@ -78,6 +81,7 @@ ENVIRONMENT_IAM_ROLE_SUFFIXES = (
 JOURNAL_EVENTS = {
     "CLAIMED",
     "BASELINE_REJECTED_NO_MUTATION",
+    "EXECUTION_DEADLINE_ARMED",
     "BASELINE_VERIFIED",
     "PROTECTION_STARTED",
     "PROTECTED",
@@ -91,6 +95,7 @@ JOURNAL_EVENTS = {
     "INFRASTRUCTURE_READY",
     "MONITOR_WINDOW_ENDED",
     "EVIDENCE_CAPTURED",
+    "EXECUTION_DEADLINE_EXCEEDED",
     "CLEANUP_STARTED",
     "CLEANUP_COMPLETE",
     "FAILED_CLEANUP_COMPLETE",
@@ -98,6 +103,43 @@ JOURNAL_EVENTS = {
     "RECOVERY_COMPLETE",
     "RECOVERY_REQUIRED",
 }
+
+
+class ExecutionDeadlineExceeded(ToolError):
+    """Raised when the reviewed U1 active execution window expires."""
+
+
+@contextmanager
+def _bounded_execution_window(seconds: int) -> Iterator[None]:
+    """Enforce the reviewed active-window limit and disarm before cleanup."""
+    if seconds <= 0:
+        raise ToolError("U1 execution deadline must be positive")
+    if threading.current_thread() is not threading.main_thread():
+        raise ToolError("U1 execution deadline requires the main process thread")
+    if not all(
+        hasattr(signal, name)
+        for name in ("SIGALRM", "ITIMER_REAL", "getitimer", "setitimer")
+    ):
+        raise ToolError("U1 execution deadline is unsupported on this host")
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    if previous_timer != (0.0, 0.0):
+        raise ToolError("U1 refuses to replace an existing process deadline")
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def _expire(_signum: int, _frame: Any) -> None:
+        raise ExecutionDeadlineExceeded("U1 reviewed active execution window expired")
+
+    try:
+        signal.signal(signal.SIGALRM, _expire)
+        signal.setitimer(signal.ITIMER_REAL, float(seconds))
+    except (OSError, ValueError) as error:
+        signal.signal(signal.SIGALRM, previous_handler)
+        raise ToolError("U1 execution deadline could not be armed") from error
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 @dataclass(frozen=True)
@@ -224,6 +266,8 @@ def public_plan(contract: U1Contract) -> dict[str, Any]:
         "ownedObjectsToProtect": EXPECTED_NON_AWS_MANAGED_BASELINE,
         "maximumSessionSeconds": authorization_tool.MAX_SESSION_SECONDS,
         "maximumExecutionSeconds": authorization_tool.MAX_EXECUTION_SECONDS,
+        "executionDeadlineEnforced": True,
+        "cleanupRunsOutsideActiveDeadline": True,
         "directAwsCliMutationAllowed": False,
         "crossplaneAwsResourceMutationAllowed": True,
         "persistentEnvironmentAfterWindow": True,
@@ -1208,51 +1252,60 @@ def execute(
     failure: BaseException | None = None
     cleanup_failure: BaseException | None = None
     cleanup: dict[str, Any] = {}
+    execution_deadline_armed = False
     try:
-        authorization_tool.verify_claim(contract.authorization_path)
-        baseline = ops.baseline(contract, audit_profile)
-        journal.append("BASELINE_VERIFIED")
+        with _bounded_execution_window(authorization_tool.MAX_EXECUTION_SECONDS):
+            execution_deadline_armed = True
+            journal.append("EXECUTION_DEADLINE_ARMED")
+            authorization_tool.verify_claim(contract.authorization_path)
+            baseline = ops.baseline(contract, audit_profile)
+            journal.append("BASELINE_VERIFIED")
 
-        protection_attempted = True
-        journal.append("PROTECTION_STARTED")
-        ops.protect(contract)
-        journal.append("PROTECTED")
+            protection_attempted = True
+            journal.append("PROTECTION_STARTED")
+            ops.protect(contract)
+            journal.append("PROTECTED")
 
-        session_attempted = True
-        journal.append("SESSION_STARTED")
-        ops.open_session(
-            contract,
-            profile,
-            audit_profile,
-            progress=journal.append,
-        )
-        journal.append("SESSION_OPENED")
+            session_attempted = True
+            journal.append("SESSION_STARTED")
+            ops.open_session(
+                contract,
+                profile,
+                audit_profile,
+                progress=journal.append,
+            )
+            journal.append("SESSION_OPENED")
 
-        controllers_attempted = True
-        ops.start_controllers(contract)
-        ops.wait_ready(contract)
-        journal.append("CONTROLLERS_STARTED")
+            controllers_attempted = True
+            ops.start_controllers(contract)
+            ops.wait_ready(contract)
+            journal.append("CONTROLLERS_STARTED")
 
-        ops.dry_run_environment(contract)
-        journal.append("ENVIRONMENT_DRY_RUN_VERIFIED")
-        environment_created = ops.create_environment(contract)
-        journal.append("ENVIRONMENT_CREATED")
-        checkpoint = ops.wait_checkpoint(contract, environment_created)
-        if checkpoint.get("allChildrenObserved"):
-            journal.append("CHILDREN_OBSERVED")
-        if checkpoint.get("checkpointReached"):
-            journal.append("INFRASTRUCTURE_READY")
-        else:
-            journal.append("MONITOR_WINDOW_ENDED")
-        evidence = ops.capture_evidence(
-            contract,
-            environment_created,
-            checkpoint,
-            audit_profile,
-        )
-        journal.append("EVIDENCE_CAPTURED")
+            ops.dry_run_environment(contract)
+            journal.append("ENVIRONMENT_DRY_RUN_VERIFIED")
+            environment_created = ops.create_environment(contract)
+            journal.append("ENVIRONMENT_CREATED")
+            checkpoint = ops.wait_checkpoint(contract, environment_created)
+            if checkpoint.get("allChildrenObserved"):
+                journal.append("CHILDREN_OBSERVED")
+            if checkpoint.get("checkpointReached"):
+                journal.append("INFRASTRUCTURE_READY")
+            else:
+                journal.append("MONITOR_WINDOW_ENDED")
+            evidence = ops.capture_evidence(
+                contract,
+                environment_created,
+                checkpoint,
+                audit_profile,
+            )
+            journal.append("EVIDENCE_CAPTURED")
     except BaseException as error:
         failure = error
+        if isinstance(error, ExecutionDeadlineExceeded):
+            try:
+                journal.append("EXECUTION_DEADLINE_EXCEEDED")
+            except BaseException:
+                pass
     finally:
         if protection_attempted or session_attempted or controllers_attempted:
             try:
@@ -1304,6 +1357,10 @@ def execute(
         "cleanupFailureSha256": hashlib.sha256(str(cleanup_failure).encode()).hexdigest()
         if cleanup_failure is not None
         else None,
+        "maximumExecutionSeconds": authorization_tool.MAX_EXECUTION_SECONDS,
+        "executionDeadlineEnforced": execution_deadline_armed,
+        "executionDeadlineExceeded": isinstance(failure, ExecutionDeadlineExceeded),
+        "cleanupRunsOutsideActiveDeadline": True,
         "singleUseClaimConsumed": True,
         "directAwsCliMutation": False,
         "crossplaneAwsResourceMutationAuthorized": True,
@@ -1340,6 +1397,9 @@ def execute(
         "controllersRestoredToZero": cleanup.get("controllersStopped") == 14,
         "sessionSecretAbsent": cleanup.get("sessionSecretAbsent") is True,
         "sharedProtectionRestored": cleanup.get("sharedProtectionRestored") is True,
+        "maximumExecutionSeconds": authorization_tool.MAX_EXECUTION_SECONDS,
+        "executionDeadlineEnforced": True,
+        "cleanupRunsOutsideActiveDeadline": True,
         "environmentDeletionAttempted": False,
         "directAwsCliMutation": False,
         "resultPath": str(result_path),

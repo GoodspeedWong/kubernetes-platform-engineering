@@ -39,7 +39,7 @@ class P11DocumentationTests(unittest.TestCase):
             "安装入口与运维手册",
             "明确不包含",
             "Managed Node Group",
-            "AWS UAT 未授权",
+            "真实创建/扰动/升级/退役 UAT",
         )
         for marker in required:
             with self.subTest(marker=marker):

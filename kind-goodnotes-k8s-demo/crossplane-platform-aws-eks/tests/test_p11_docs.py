@@ -115,11 +115,12 @@ class P11DocumentationTests(unittest.TestCase):
         ):
             self.assertIn(marker, retirement)
 
-    def test_uat_preserves_not_run_boundary_and_cleanup_ownership(self) -> None:
+    def test_uat_preserves_runtime_boundary_and_cleanup_ownership(self) -> None:
         uat = (EKS_ROOT / "UAT.md").read_text()
         for marker in (
-            "U0–U5=NOT_RUN",
-            "AWS_UAT=NOT_RUN",
+            "U0=FAILED_CLOSED/RECOVERY_COMPLETE",
+            "U1–U5=NOT_RUN",
+            "AWS_RESOURCE_UAT=NOT_RUN",
             "测试资源与清理责任",
             "创建/清理 owner",
             "未知残留",

@@ -49,6 +49,8 @@ POLL_SECONDS = 10
 READ_ONLY_AWS_OPERATIONS = {
     ("sts", "get-caller-identity"),
     ("eks", "list-clusters"),
+    ("eks", "describe-cluster-versions"),
+    ("eks", "describe-addon-versions"),
     ("eks", "describe-cluster"),
     ("eks", "list-fargate-profiles"),
     ("eks", "describe-fargate-profile"),
@@ -159,6 +161,8 @@ class U1Contract:
     expected_host_public_ip: str
     expected_kind_public_ip: str
     node_image_id: str
+    kubernetes_version: str
+    coredns_addon_version: str
     controller_names: tuple[str, ...]
     run_id: str
 
@@ -220,11 +224,21 @@ def load_contract(
         bootstrap.deployment_role_arn.split(":")[4],
     } != {authorization["accountId"]}:
         raise ToolError("U1 account differs from the A05 review")
+    platform_catalog = load_yaml(bundle_directory / "platform-release.approved.yaml")
     node_catalog = load_yaml(bundle_directory / "node-image.approved.yaml")
     try:
+        kubernetes_version = platform_catalog["data"]["kubernetes"]
+        coredns_addon_version = platform_catalog["data"]["coreDNSAddon"]
         node_image_id = node_catalog["data"]["images"]["amd64"]["amiId"]
     except (KeyError, TypeError) as error:
-        raise ToolError("U1 node image catalog lacks the reviewed amd64 AMI") from error
+        raise ToolError("U1 release catalogs lack a reviewed runtime value") from error
+    if (
+        kubernetes_version != parameters.get("kubernetesVersion")
+        or kubernetes_version != authorization_tool.EXPECTED_KUBERNETES_VERSION
+        or coredns_addon_version
+        != authorization_tool.EXPECTED_COREDNS_ADDON_VERSION
+    ):
+        raise ToolError("U1 EKS/CoreDNS release differs from the reviewed intent")
     if not re.fullmatch(r"ami-[0-9a-f]{17}", str(node_image_id)):
         raise ToolError("U1 node image catalog AMI is invalid")
     match = re.fullmatch(r"u1b-([0-9]{8})-([0-9]{2})", authorization["windowId"])
@@ -246,6 +260,8 @@ def load_contract(
         expected_host_public_ip=authorization["hostPublicEgressIp"],
         expected_kind_public_ip=authorization["kindPublicEgressIp"],
         node_image_id=node_image_id,
+        kubernetes_version=kubernetes_version,
+        coredns_addon_version=coredns_addon_version,
         controller_names=u0_runner.controller_inventory(),
         run_id=f"a05-{match.group(1)}-u1-{match.group(2)}",
     )
@@ -260,6 +276,9 @@ def public_plan(contract: U1Contract) -> dict[str, Any]:
         "approved": contract.authorization["approved"],
         "environment": contract.environment,
         "region": contract.region,
+        "kubernetesVersion": contract.kubernetes_version,
+        "coreDNSAddonVersion": contract.coredns_addon_version,
+        "releaseAvailabilityGateBeforeMutation": True,
         "singleEnvironmentCreate": True,
         "controllerDeployments": len(contract.controller_names),
         "sharedXRsToProtect": 3,
@@ -649,6 +668,107 @@ class RealOperations(u0_runner.RealOperations):
             "environmentIamRoles": iam_count,
         }
 
+    def verify_eks_release_availability(
+        self, contract: U1Contract, profile: str
+    ) -> dict[str, Any]:
+        versions = self._aws_json(
+            contract,
+            profile,
+            "eks",
+            "describe-cluster-versions",
+            "--cluster-versions",
+            contract.kubernetes_version,
+        ) or {}
+        version_items = versions.get("clusterVersions", [])
+        if not isinstance(version_items, list) or len(version_items) != 1:
+            raise ToolError("U1 reviewed EKS version is no longer uniquely available")
+        version = version_items[0]
+        if (
+            not isinstance(version, dict)
+            or version.get("clusterVersion") != contract.kubernetes_version
+            or version.get("clusterType") != "eks"
+            or version.get("status") != "STANDARD_SUPPORT"
+            or version.get("versionStatus") != "STANDARD_SUPPORT"
+            or not re.fullmatch(
+                r"eks\.[0-9]+", str(version.get("defaultPlatformVersion", ""))
+            )
+            or not re.fullmatch(
+                rf"{re.escape(contract.kubernetes_version)}\.[0-9]+",
+                str(version.get("kubernetesPatchVersion", "")),
+            )
+        ):
+            raise ToolError("U1 reviewed EKS version is unavailable or unsupported")
+
+        addons = self._aws_json(
+            contract,
+            profile,
+            "eks",
+            "describe-addon-versions",
+            "--addon-name",
+            "coredns",
+            "--kubernetes-version",
+            contract.kubernetes_version,
+        ) or {}
+        addon_items = addons.get("addons", [])
+        if not isinstance(addon_items, list) or len(addon_items) != 1:
+            raise ToolError("U1 CoreDNS add-on inventory differs")
+        addon = addon_items[0]
+        versions = addon.get("addonVersions", []) if isinstance(addon, dict) else []
+        if not isinstance(versions, list):
+            raise ToolError("U1 CoreDNS add-on version inventory differs")
+        matching = [
+            item
+            for item in versions
+            if isinstance(item, dict)
+            and item.get("addonVersion") == contract.coredns_addon_version
+        ]
+        if (
+            not isinstance(addon, dict)
+            or addon.get("addonName") != "coredns"
+            or addon.get("owner") != "aws"
+            or addon.get("publisher") != "eks"
+            or addon.get("defaultNamespace") != "kube-system"
+            or len(matching) != 1
+        ):
+            raise ToolError("U1 reviewed CoreDNS add-on version is unavailable")
+        reviewed = matching[0]
+        architectures = reviewed.get("architecture")
+        compute_types = reviewed.get("computeTypes")
+        compatibilities = reviewed.get("compatibilities")
+        compatible = (
+            any(
+                isinstance(item, dict)
+                and item.get("clusterVersion") == contract.kubernetes_version
+                and isinstance(item.get("platformVersions"), list)
+                and all(
+                    isinstance(value, str) for value in item["platformVersions"]
+                )
+                and "*" in item["platformVersions"]
+                for item in compatibilities
+            )
+            if isinstance(compatibilities, list)
+            else False
+        )
+        if (
+            not isinstance(architectures, list)
+            or any(not isinstance(value, str) for value in architectures)
+            or "amd64" not in architectures
+            or not isinstance(compute_types, list)
+            or any(not isinstance(value, str) for value in compute_types)
+            or not {"ec2", "fargate"}.issubset(set(compute_types))
+            or not compatible
+            or reviewed.get("requiresConfiguration") is not False
+            or reviewed.get("requiresIamPermissions") is not False
+        ):
+            raise ToolError("U1 reviewed CoreDNS add-on is incompatible")
+        return {
+            "eksVersion": contract.kubernetes_version,
+            "eksVersionStandardSupport": True,
+            "eksDefaultPlatformVersion": version["defaultPlatformVersion"],
+            "coreDNSAddonVersion": contract.coredns_addon_version,
+            "coreDNSAddonCompatible": True,
+        }
+
     def _assert_catalogs(self, contract: U1Contract) -> None:
         for filename in ("platform-release.approved.yaml", "node-image.approved.yaml"):
             expected = load_yaml(contract.bundle_directory / filename)
@@ -734,6 +854,7 @@ class RealOperations(u0_runner.RealOperations):
         caller = self._aws_json(contract, audit_profile, "sts", "get-caller-identity") or {}
         if caller.get("Account") != contract.account_id:
             raise ToolError("U1 audit profile account differs from the authorization")
+        release = self.verify_eks_release_availability(contract, audit_profile)
         conflicts = self.aws_conflicts(contract, audit_profile)
         if set(conflicts) != authorization_tool.TARGET_CONFLICT_KEYS or any(conflicts.values()):
             raise ToolError("U1 target environment already has conflicting AWS resources")
@@ -778,6 +899,7 @@ class RealOperations(u0_runner.RealOperations):
             "accountMatched": True,
             "spotQuotaAtLeastNodePoolLimit": True,
             "nodeImageAvailable": True,
+            **release,
         }
 
     def _optional(

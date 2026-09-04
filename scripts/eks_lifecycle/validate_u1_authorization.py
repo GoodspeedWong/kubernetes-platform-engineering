@@ -38,6 +38,22 @@ WINDOW_RE = re.compile(r"^u1b-[0-9]{8}-[0-9]{2}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 IPV4_RE = re.compile(r"^[0-9]{1,3}(?:\.[0-9]{1,3}){3}$")
 
+EXPECTED_KUBERNETES_VERSION = "1.35"
+EXPECTED_COREDNS_ADDON_VERSION = "v1.14.3-eksbuild.3"
+EXPECTED_PLATFORM_RELEASE_DATA = {
+    "schemaVersion": 1,
+    "kubernetes": EXPECTED_KUBERNETES_VERSION,
+    "crossplane": {"core": "v2.2.1", "cli": "v2.3.0"},
+    "cilium": {"chart": "1.20.1", "app": "1.20.1"},
+    "karpenter": {
+        "crdChart": "1.14.1",
+        "controllerChart": "1.14.1",
+        "app": "1.14.1",
+    },
+    "argoCD": {"chart": "10.4.0", "app": "v3.5.1"},
+    "coreDNSAddon": EXPECTED_COREDNS_ADDON_VERSION,
+}
+
 TARGET_CONFLICT_KEYS = {
     "eksClusters",
     "vpcs",
@@ -121,7 +137,7 @@ AWS_MUTATION_SCOPE = (
 )
 
 ALLOWED_ACTIONS = (
-    "perform exact read-only AWS and public-egress preflight after the single-use claim",
+    "perform exact read-only AWS, EKS/CoreDNS release, and public-egress preflight after the single-use claim",
     "protect and later restore the existing shared management-plane objects",
     "publish the separately reviewed on-demand session Secret for at most 60 minutes",
     "start only the locked Crossplane, Function, and reviewed Provider controllers",
@@ -284,6 +300,13 @@ def _validate_catalog(document: Any, label: str) -> str:
     return document["metadata"]["name"]
 
 
+def _validate_platform_release(document: Any) -> str:
+    name = _validate_catalog(document, "platform release")
+    if not _strict_equal(document.get("data"), EXPECTED_PLATFORM_RELEASE_DATA):
+        raise ToolError("U1 platform release data differs from the locked contract")
+    return name
+
+
 def _validate_environment(directory: Path, bundle: str, snapshot: dict[str, Any]) -> dict[str, Any]:
     document = load_yaml(directory / "environment.approved.yaml")
     if not isinstance(document, dict) or set(document) != {
@@ -345,7 +368,7 @@ def _validate_environment(directory: Path, bundle: str, snapshot: dict[str, Any]
     if (
         parameters.get("class") != "dev"
         or parameters.get("region") != snapshot.get("region")
-        or parameters.get("kubernetesVersion") != "1.35"
+        or parameters.get("kubernetesVersion") != EXPECTED_KUBERNETES_VERSION
         or not _strict_equal(
             parameters.get("providerConfigRef"),
             {"kind": "ClusterProviderConfig", "name": name},
@@ -421,7 +444,7 @@ def _validate_environment(directory: Path, bundle: str, snapshot: dict[str, Any]
         raise ToolError("U1 availability zones differ from the snapshot")
     platform_document = load_yaml(directory / "platform-release.approved.yaml")
     node_document = load_yaml(directory / "node-image.approved.yaml")
-    platform_name = _validate_catalog(platform_document, "platform release")
+    platform_name = _validate_platform_release(platform_document)
     node_name = _validate_catalog(node_document, "node image")
     if not _strict_equal(
         parameters.get("platformReleaseRef"),
@@ -436,6 +459,13 @@ def _validate_environment(directory: Path, bundle: str, snapshot: dict[str, Any]
         amd64 = node_data["images"]["amd64"]
     except (KeyError, TypeError) as error:
         raise ToolError("U1 node image catalog shape differs") from error
+    if (
+        platform_document.get("data", {}).get("kubernetes")
+        != parameters.get("kubernetesVersion")
+        or platform_document.get("data", {}).get("coreDNSAddon")
+        != snapshot.get("eksRelease", {}).get("coreDNSAddonVersion")
+    ):
+        raise ToolError("U1 platform release differs from the AWS snapshot")
     if (
         node_data.get("region") != snapshot.get("region")
         or node_data.get("kubernetes") != parameters.get("kubernetesVersion")
@@ -462,6 +492,7 @@ def _validate_snapshot(document: dict[str, Any], *, allow_stale: bool) -> dateti
         "providerBootstrapRoles",
         "spotQuota",
         "nodeImage",
+        "eksRelease",
         "awsMutation",
         "kubernetesMutation",
     }
@@ -520,6 +551,56 @@ def _validate_snapshot(document: dict[str, Any], *, allow_stale: bool) -> dateti
         or image.get("rootDeviceType") != "ebs"
     ):
         raise ToolError("U1 reviewed node image is unavailable or incompatible")
+    release = document.get("eksRelease")
+    architectures = (
+        release.get("coreDNSArchitectures") if isinstance(release, dict) else None
+    )
+    compute_types = (
+        release.get("coreDNSComputeTypes") if isinstance(release, dict) else None
+    )
+    platform_versions = (
+        release.get("coreDNSPlatformVersions") if isinstance(release, dict) else None
+    )
+    if (
+        not isinstance(release, dict)
+        or set(release)
+        != {
+            "clusterVersion",
+            "clusterType",
+            "status",
+            "defaultPlatformVersion",
+            "kubernetesPatchVersion",
+            "coreDNSAddonVersion",
+            "coreDNSArchitectures",
+            "coreDNSComputeTypes",
+            "coreDNSPlatformVersions",
+            "coreDNSRequiresConfiguration",
+            "coreDNSRequiresIamPermissions",
+        }
+        or release.get("clusterVersion") != EXPECTED_KUBERNETES_VERSION
+        or release.get("clusterType") != "eks"
+        or release.get("status") != "STANDARD_SUPPORT"
+        or not re.fullmatch(
+            r"eks\.[0-9]+", str(release.get("defaultPlatformVersion", ""))
+        )
+        or not re.fullmatch(
+            rf"{re.escape(EXPECTED_KUBERNETES_VERSION)}\.[0-9]+",
+            str(release.get("kubernetesPatchVersion", "")),
+        )
+        or release.get("coreDNSAddonVersion") != EXPECTED_COREDNS_ADDON_VERSION
+        or not isinstance(architectures, list)
+        or any(not isinstance(value, str) for value in architectures)
+        or not {"amd64", "arm64"}.issubset(set(architectures))
+        or not isinstance(compute_types, list)
+        or any(not isinstance(value, str) for value in compute_types)
+        or not {"ec2", "fargate"}.issubset(set(compute_types))
+        or not isinstance(platform_versions, list)
+        or any(not isinstance(value, str) for value in platform_versions)
+        or "*" not in platform_versions
+        or release.get("coreDNSRequiresConfiguration") is not False
+        or release.get("coreDNSRequiresIamPermissions") is not False
+    ):
+        raise ToolError("U1 EKS/CoreDNS release snapshot is unavailable or incompatible")
     return observed_at
 
 

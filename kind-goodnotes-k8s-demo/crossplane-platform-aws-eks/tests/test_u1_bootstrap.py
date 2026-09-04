@@ -87,6 +87,8 @@ def contract() -> runner.U1Contract:
         expected_host_public_ip="203.0.113.10",
         expected_kind_public_ip="203.0.113.10",
         node_image_id="ami-0123456789abcdef0",
+        kubernetes_version="1.35",
+        coredns_addon_version="v1.14.3-eksbuild.3",
         controller_names=(
             "crossplane",
             *(f"controller-{index}" for index in range(13)),
@@ -207,6 +209,11 @@ class U1BootstrapTests(unittest.TestCase):
         self.assertFalse(result["automaticRetry"])
         self.assertFalse(result["automaticCloudDeletion"])
         self.assertFalse(result["networkApprovalOrGitBootstrap"])
+        self.assertEqual("1.35", result["kubernetesVersion"])
+        self.assertEqual(
+            "v1.14.3-eksbuild.3", result["coreDNSAddonVersion"]
+        )
+        self.assertTrue(result["releaseAvailabilityGateBeforeMutation"])
         self.assertEqual(14, result["controllerDeployments"])
         self.assertTrue(result["executionDeadlineEnforced"])
         self.assertTrue(result["cleanupRunsOutsideActiveDeadline"])
@@ -575,6 +582,156 @@ class U1BootstrapTests(unittest.TestCase):
         )
         self.assertEqual("--filter", nat_call.kwargs["filters"][0])
 
+    def test_eks_and_coredns_release_are_verified_with_read_only_calls(self) -> None:
+        operations = runner.RealOperations()
+        reviewed = contract()
+        calls: list[tuple[str, str, tuple[str, ...]]] = []
+
+        def aws(_contract, _profile, service, operation, *args, **_kwargs):
+            calls.append((service, operation, args))
+            if operation == "describe-cluster-versions":
+                return {
+                    "clusterVersions": [
+                        {
+                            "clusterVersion": "1.35",
+                            "clusterType": "eks",
+                            "defaultPlatformVersion": "eks.21",
+                            "status": "STANDARD_SUPPORT",
+                            "versionStatus": "STANDARD_SUPPORT",
+                            "kubernetesPatchVersion": "1.35.6",
+                        }
+                    ]
+                }
+            return {
+                "addons": [
+                    {
+                        "addonName": "coredns",
+                        "owner": "aws",
+                        "publisher": "eks",
+                        "defaultNamespace": "kube-system",
+                        "addonVersions": [
+                            {
+                                "addonVersion": "v1.14.3-eksbuild.3",
+                                "architecture": ["amd64", "arm64"],
+                                "computeTypes": ["ec2", "fargate"],
+                                "compatibilities": [
+                                    {
+                                        "clusterVersion": "1.35",
+                                        "platformVersions": ["*"],
+                                    }
+                                ],
+                                "requiresConfiguration": False,
+                                "requiresIamPermissions": False,
+                            }
+                        ],
+                    }
+                ]
+            }
+
+        with patch.object(operations, "_aws_json", side_effect=aws):
+            result = operations.verify_eks_release_availability(
+                reviewed, reviewed.audit_profile
+            )
+        self.assertTrue(result["eksVersionStandardSupport"])
+        self.assertTrue(result["coreDNSAddonCompatible"])
+        self.assertEqual(
+            [
+                (
+                    "eks",
+                    "describe-cluster-versions",
+                    ("--cluster-versions", "1.35"),
+                ),
+                (
+                    "eks",
+                    "describe-addon-versions",
+                    ("--addon-name", "coredns", "--kubernetes-version", "1.35"),
+                ),
+            ],
+            calls,
+        )
+
+    def test_eks_or_coredns_release_drift_fails_closed(self) -> None:
+        operations = runner.RealOperations()
+        reviewed = contract()
+        good_cluster = {
+            "clusterVersions": [
+                {
+                    "clusterVersion": "1.35",
+                    "clusterType": "eks",
+                    "defaultPlatformVersion": "eks.21",
+                    "status": "STANDARD_SUPPORT",
+                    "versionStatus": "STANDARD_SUPPORT",
+                    "kubernetesPatchVersion": "1.35.6",
+                }
+            ]
+        }
+        bad_addon = {
+            "addons": [
+                {
+                    "addonName": "coredns",
+                    "owner": "aws",
+                    "publisher": "eks",
+                    "defaultNamespace": "kube-system",
+                    "addonVersions": [],
+                }
+            ]
+        }
+        with (
+            patch.object(
+                operations,
+                "_aws_json",
+                side_effect=[good_cluster, bad_addon],
+            ),
+            self.assertRaisesRegex(ToolError, "CoreDNS add-on version"),
+        ):
+            operations.verify_eks_release_availability(
+                reviewed, reviewed.audit_profile
+            )
+
+    def test_malformed_release_api_shapes_fail_closed(self) -> None:
+        operations = runner.RealOperations()
+        reviewed = contract()
+        cases = [
+            ({"clusterVersions": "1.35"}, None),
+            (
+                {
+                    "clusterVersions": [
+                        {
+                            "clusterVersion": "1.35",
+                            "clusterType": "eks",
+                            "defaultPlatformVersion": "eks.21",
+                            "status": "STANDARD_SUPPORT",
+                            "versionStatus": "STANDARD_SUPPORT",
+                            "kubernetesPatchVersion": "1.35.6",
+                        }
+                    ]
+                },
+                {
+                    "addons": [
+                        {
+                            "addonName": "coredns",
+                            "owner": "aws",
+                            "publisher": "eks",
+                            "defaultNamespace": "kube-system",
+                            "addonVersions": "not-a-list",
+                        }
+                    ]
+                },
+            ),
+        ]
+        for cluster_response, addon_response in cases:
+            responses = [cluster_response]
+            if addon_response is not None:
+                responses.append(addon_response)
+            with (
+                self.subTest(cluster=cluster_response),
+                patch.object(operations, "_aws_json", side_effect=responses),
+                self.assertRaises(ToolError),
+            ):
+                operations.verify_eks_release_availability(
+                    reviewed, reviewed.audit_profile
+                )
+
     def test_environment_create_is_server_dry_run_then_single_create(self) -> None:
         operations = runner.RealOperations()
         reviewed = contract()
@@ -759,6 +916,12 @@ class U1BootstrapTests(unittest.TestCase):
             "hostPublicEgressIp": reviewed.expected_host_public_ip,
             "kindPublicEgressIp": reviewed.expected_kind_public_ip,
         }
+        platform_catalog = {
+            "data": {
+                "kubernetes": reviewed.kubernetes_version,
+                "coreDNSAddon": reviewed.coredns_addon_version,
+            }
+        }
         node_catalog = {
             "data": {"images": {"amd64": {"amiId": reviewed.node_image_id}}}
         }
@@ -776,7 +939,11 @@ class U1BootstrapTests(unittest.TestCase):
             patch.object(
                 runner,
                 "load_yaml",
-                side_effect=[reviewed.environment_document, node_catalog],
+                side_effect=[
+                    reviewed.environment_document,
+                    platform_catalog,
+                    node_catalog,
+                ],
             ),
             patch.object(
                 runner.authorization_tool,

@@ -66,6 +66,25 @@ def snapshot(*, observed_at: datetime | None = None) -> dict:
             "architecture": "x86_64",
             "rootDeviceType": "ebs",
         },
+        "eksRelease": {
+            "clusterVersion": "1.35",
+            "clusterType": "eks",
+            "status": "STANDARD_SUPPORT",
+            "defaultPlatformVersion": "eks.21",
+            "kubernetesPatchVersion": "1.35.6",
+            "coreDNSAddonVersion": "v1.14.3-eksbuild.3",
+            "coreDNSArchitectures": ["amd64", "arm64"],
+            "coreDNSComputeTypes": [
+                "ec2",
+                "hybrid",
+                "fargate",
+                "auto",
+                "local-cluster",
+            ],
+            "coreDNSPlatformVersions": ["*"],
+            "coreDNSRequiresConfiguration": False,
+            "coreDNSRequiresIamPermissions": False,
+        },
         "awsMutation": False,
         "kubernetesMutation": False,
     }
@@ -124,7 +143,22 @@ kind: EnvironmentConfig
 metadata:
   name: {name}
 data:
-  safe: true
+  schemaVersion: 1
+  kubernetes: "1.35"
+  crossplane:
+    core: v2.2.1
+    cli: v2.3.0
+  cilium:
+    chart: "1.20.1"
+    app: "1.20.1"
+  karpenter:
+    crdChart: "1.14.1"
+    controllerChart: "1.14.1"
+    app: "1.14.1"
+  argoCD:
+    chart: "10.4.0"
+    app: v3.5.1
+  coreDNSAddon: v1.14.3-eksbuild.3
 """
 
 NODE_CATALOG = b"""apiVersion: apiextensions.crossplane.io/v1beta1
@@ -238,6 +272,7 @@ class U1AuthorizationTests(unittest.TestCase):
         *,
         snapshot_document: dict | None = None,
         environment_payload: bytes | None = None,
+        platform_payload: bytes | None = None,
         resource_contract: dict | None = None,
     ) -> Path:
         payloads = {
@@ -259,9 +294,8 @@ class U1AuthorizationTests(unittest.TestCase):
                 + "\n"
             ).encode(),
             "node-image.approved.yaml": NODE_CATALOG,
-            "platform-release.approved.yaml": CATALOG.replace(
-                b"{name}", b"platform-release"
-            ),
+            "platform-release.approved.yaml": platform_payload
+            or CATALOG.replace(b"{name}", b"platform-release"),
         }
         document["reviewedInputs"] = {
             name: hashlib.sha256(payload).hexdigest()
@@ -389,6 +423,20 @@ class U1AuthorizationTests(unittest.TestCase):
         )
         os.chmod(node_path, 0o600)
         with self.assertRaisesRegex(ToolError, "node image catalog"):
+            self.validate(path)
+
+    def test_platform_release_and_eks_snapshot_must_match_locked_runtime(self) -> None:
+        changed = CATALOG.replace(
+            b"{name}", b"platform-release"
+        ).replace(b"v1.14.3-eksbuild.3", b"v1.14.3-eksbuild.16")
+        path = self.write_bundle(authorization(), platform_payload=changed)
+        with self.assertRaisesRegex(ToolError, "platform release data"):
+            self.validate(path)
+
+        release = snapshot()
+        release["eksRelease"]["status"] = "UNSUPPORTED"
+        path = self.write_bundle(authorization(), snapshot_document=release)
+        with self.assertRaisesRegex(ToolError, "EKS/CoreDNS release snapshot"):
             self.validate(path)
 
     def test_scope_or_resource_contract_drift_fails(self) -> None:

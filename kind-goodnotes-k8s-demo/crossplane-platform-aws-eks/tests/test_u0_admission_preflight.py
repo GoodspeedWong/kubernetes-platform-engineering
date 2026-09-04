@@ -47,6 +47,32 @@ def contract() -> runner.AdmissionContract:
     )
 
 
+def observed_fixture() -> dict:
+    return {
+        "apiVersion": "platform.aws.goodnotes.io/v1alpha1",
+        "kind": "XEKSEnvironment",
+        "metadata": {
+            "name": authorization.FIXTURE_NAME,
+            "uid": "fixture-uid",
+            "resourceVersion": "17",
+            "labels": {
+                "platform.aws.goodnotes.io/managed-by": "u0-admission-preflight",
+                "platform.aws.goodnotes.io/window-id": "u0a-20260904-01",
+            },
+            "annotations": {"crossplane.io/paused": "true"},
+        },
+        "spec": {
+            "crossplane": {"compositionUpdatePolicy": "Manual"},
+            "parameters": {
+                "lifecycle": {
+                    "retirementStage": "Active",
+                    "deletionProtection": True,
+                }
+            },
+        },
+    }
+
+
 class FakeJournal:
     def __init__(self) -> None:
         self.events: list[str] = []
@@ -299,29 +325,35 @@ class U0AdmissionPreflightTests(unittest.TestCase):
         self.assertTrue(result["managementSessionSecretUntouched"])
         self.assertFalse(result["awsApiCalls"])
 
-    def test_patch_contract_uses_uid_resource_version_and_exact_transitions(self) -> None:
-        fixture = {
-            "metadata": {"uid": "fixture-uid", "resourceVersion": "17"}
-        }
-        valid = runner.RealOperations._patch("valid-transition", fixture)
-        skipped = runner.RealOperations._patch("stage-skip", fixture)
-        unprotected = runner.RealOperations._patch("unprotect", fixture)
-        self.assertEqual("fixture-uid", valid[0]["value"])
-        self.assertEqual("17", valid[1]["value"])
-        self.assertEqual("DrainWorkloads", valid[-1]["value"])
-        self.assertEqual("RemoveGitOps", skipped[-1]["value"])
-        self.assertFalse(unprotected[-1]["value"])
+    def test_replacement_preserves_identity_and_uses_exact_transitions(self) -> None:
+        fixture = observed_fixture()
+        valid = runner.RealOperations._replacement("valid-transition", fixture)
+        skipped = runner.RealOperations._replacement("stage-skip", fixture)
+        unprotected = runner.RealOperations._replacement("unprotect", fixture)
+        self.assertEqual("fixture-uid", valid["metadata"]["uid"])
+        self.assertEqual("17", valid["metadata"]["resourceVersion"])
+        self.assertEqual(
+            "DrainWorkloads",
+            valid["spec"]["parameters"]["lifecycle"]["retirementStage"],
+        )
+        self.assertEqual(
+            "RemoveGitOps",
+            skipped["spec"]["parameters"]["lifecycle"]["retirementStage"],
+        )
+        self.assertFalse(
+            unprotected["spec"]["parameters"]["lifecycle"][
+                "deletionProtection"
+            ]
+        )
+        self.assertEqual(
+            {"deletionProtection": True, "retirementStage": "Active"},
+            fixture["spec"]["parameters"]["lifecycle"],
+        )
 
     def test_dry_run_records_hashes_without_persisting_response_body(self) -> None:
         operations = runner.RealOperations()
         reviewed = contract()
-        fixture = {
-            "metadata": {
-                "name": authorization.FIXTURE_NAME,
-                "uid": "uid-1",
-                "resourceVersion": "3",
-            }
-        }
+        fixture = observed_fixture()
         allowed_case = next(
             item
             for item in reviewed.test_plan["dryRunCases"]
@@ -347,16 +379,21 @@ class U0AdmissionPreflightTests(unittest.TestCase):
         self.assertIn("--dry-run=server", arguments)
         self.assertIn("--as", arguments)
         self.assertIn("--as-group", arguments)
+        self.assertIn("replace", arguments)
+        self.assertNotIn("patch", arguments)
+        replacement = json.loads(command.call_args.kwargs["input_text"])
+        self.assertEqual("fixture-uid", replacement["metadata"]["uid"])
+        self.assertEqual(
+            "DrainWorkloads",
+            replacement["spec"]["parameters"]["lifecycle"][
+                "retirementStage"
+            ],
+        )
 
     def test_policy_denial_requires_the_exact_reviewed_message(self) -> None:
         operations = runner.RealOperations()
         reviewed = contract()
-        fixture = {
-            "metadata": {
-                "uid": "uid-1",
-                "resourceVersion": "3",
-            }
-        }
+        fixture = observed_fixture()
         denied_case = next(
             item
             for item in reviewed.test_plan["dryRunCases"]

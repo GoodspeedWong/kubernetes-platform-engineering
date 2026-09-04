@@ -12,6 +12,7 @@ part of this runner.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -666,47 +667,37 @@ class RealOperations:
         }
 
     @staticmethod
-    def _patch(request: str, fixture: dict[str, Any]) -> list[dict[str, Any]]:
+    def _replacement(request: str, fixture: dict[str, Any]) -> dict[str, Any]:
         metadata = fixture["metadata"]
-        prefix = "/spec/parameters/lifecycle"
-        guards = [
-            {"op": "test", "path": "/metadata/uid", "value": metadata["uid"]},
-            {
-                "op": "test",
-                "path": "/metadata/resourceVersion",
-                "value": metadata["resourceVersion"],
+        replacement = {
+            "apiVersion": fixture["apiVersion"],
+            "kind": fixture["kind"],
+            "metadata": {
+                "name": metadata["name"],
+                "uid": metadata["uid"],
+                "resourceVersion": metadata["resourceVersion"],
+                "labels": copy.deepcopy(metadata["labels"]),
+                "annotations": copy.deepcopy(metadata["annotations"]),
             },
-        ]
+            "spec": copy.deepcopy(fixture["spec"]),
+        }
+        lifecycle = replacement["spec"]["parameters"]["lifecycle"]
         if request in {"valid-transition", "stage-skip"}:
-            return guards + [
-                {
-                    "op": "add",
-                    "path": f"{prefix}/evidenceRef",
-                    "value": {
-                        "kind": "ConfigMap",
-                        "name": authorization_tool.EVIDENCE_NAME,
-                        "namespace": NAMESPACE,
-                    },
-                },
-                {
-                    "op": "replace",
-                    "path": f"{prefix}/retirementStage",
-                    "value": (
-                        "DrainWorkloads"
-                        if request == "valid-transition"
-                        else "RemoveGitOps"
-                    ),
-                },
-            ]
-        if request == "unprotect":
-            return guards + [
-                {
-                    "op": "replace",
-                    "path": f"{prefix}/deletionProtection",
-                    "value": False,
-                }
-            ]
-        raise ToolError("unreviewed U0 admission patch request")
+            lifecycle["evidenceRef"] = {
+                "kind": "ConfigMap",
+                "name": authorization_tool.EVIDENCE_NAME,
+                "namespace": NAMESPACE,
+            }
+            lifecycle["retirementStage"] = (
+                "DrainWorkloads"
+                if request == "valid-transition"
+                else "RemoveGitOps"
+            )
+        elif request == "unprotect":
+            lifecycle["deletionProtection"] = False
+        else:
+            raise ToolError("unreviewed U0 admission replacement request")
+        return replacement
 
     def _dry_run_case(
         self,
@@ -733,15 +724,15 @@ class RealOperations:
             result = self._kubectl(
                 contract,
                 *actor_args,
-                "patch",
-                "xeksenvironment.platform.aws.goodnotes.io",
-                authorization_tool.FIXTURE_NAME,
-                "--type=json",
-                "-p",
-                json.dumps(self._patch(case["request"], fixture)),
+                "replace",
+                "-f",
+                "-",
                 "--dry-run=server",
                 "-o",
                 "json",
+                input_text=json.dumps(
+                    self._replacement(case["request"], fixture)
+                ),
             )
         allowed = result.returncode == 0
         combined = result.stdout + "\n" + result.stderr

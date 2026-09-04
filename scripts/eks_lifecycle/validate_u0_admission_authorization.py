@@ -173,7 +173,7 @@ def expected_test_plan(window_id: str) -> dict[str, Any]:
                 "actor": "ordinary",
                 "request": "valid-transition",
                 "expectedAllowed": False,
-                "expectedMarker": 'cannot patch resource "xeksenvironments"',
+                "expectedMarker": 'cannot update resource "xeksenvironments"',
                 "enforcement": "RBAC",
             },
             {
@@ -181,7 +181,7 @@ def expected_test_plan(window_id: str) -> dict[str, Any]:
                 "actor": "ordinary",
                 "request": "stage-skip",
                 "expectedAllowed": False,
-                "expectedMarker": 'cannot patch resource "xeksenvironments"',
+                "expectedMarker": 'cannot update resource "xeksenvironments"',
                 "enforcement": "RBAC",
             },
             {
@@ -189,7 +189,7 @@ def expected_test_plan(window_id: str) -> dict[str, Any]:
                 "actor": "ordinary",
                 "request": "unprotect",
                 "expectedAllowed": False,
-                "expectedMarker": 'cannot patch resource "xeksenvironments"',
+                "expectedMarker": 'cannot update resource "xeksenvironments"',
                 "enforcement": "RBAC",
             },
             {

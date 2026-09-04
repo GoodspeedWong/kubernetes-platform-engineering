@@ -82,8 +82,11 @@ class FakeOperations:
     def apply_definitions(self, _contract):
         self._call("apply")
 
-    def open_session(self, _contract, _profile, _audit_profile):
+    def open_session(self, _contract, _profile, _audit_profile, *, progress=None):
         self._call("open")
+        if progress is not None:
+            for stage in credentials.SESSION_PROGRESS_STAGES:
+                progress(stage)
 
     def start_controllers(self, _contract):
         self._call("start")
@@ -187,6 +190,12 @@ class U0ManagementPreflightTests(unittest.TestCase):
             operations.calls,
         )
         self.assertEqual("U0_MANAGEMENT_PREFLIGHT_PASS", result["status"])
+        session_start = journal.events.index("SESSION_STARTED")
+        session_opened = journal.events.index("SESSION_OPENED")
+        self.assertEqual(
+            list(credentials.SESSION_PROGRESS_STAGES),
+            journal.events[session_start + 1 : session_opened],
+        )
         self.assertEqual("CLEANUP_COMPLETE", journal.events[-1])
 
     def test_baseline_failure_consumes_claim_without_api_cleanup_mutation(self) -> None:

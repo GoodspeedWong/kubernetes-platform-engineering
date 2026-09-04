@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/eks_lifecycle"))
 import open_management_session as manual
 import prepare_identity_boundaries as preparation
+import audit_management_iam as iam_audit
 import renew_management_credentials as credentials
 from common import EKS_ROOT, ToolError, load_yaml
 from test_security_remediation import ACCOUNT, contract, inventory, session, target_sessions
@@ -114,11 +115,19 @@ class OnDemandSessionTests(unittest.TestCase):
         self.assertEqual(1, run.call_count)
 
     def test_manual_open_exports_only_once_and_returns_without_sleep_or_loop(self):
+        progress = []
         with patch.object(credentials, "require_tool"), patch.object(credentials, "verify_publication_gate") as gate:
             with patch.object(credentials, "session_metadata", return_value=None), patch.object(credentials, "verify_aws_identity") as audit:
                 with patch.object(credentials, "_run_json", return_value=session()) as run:
                     with patch.object(credentials, "verify_session", return_value=target_sessions()) as assume, patch.object(credentials, "publish_session") as publish:
-                        result = credentials.open_session(contract(), "source", "audit", review(), credentials.ACKNOWLEDGEMENT)
+                        result = credentials.open_session(
+                            contract(),
+                            "source",
+                            "audit",
+                            review(),
+                            credentials.ACKNOWLEDGEMENT,
+                            progress=progress.append,
+                        )
         gate.assert_called_once_with(contract())
         audit.assert_called_once()
         run.assert_called_once()
@@ -128,6 +137,45 @@ class OnDemandSessionTests(unittest.TestCase):
         self.assertFalse(result["automaticRenewal"])
         self.assertFalse(result["runtimeAuthenticationVerified"])
         self.assertNotIn("test-only", json.dumps(result))
+        self.assertEqual(list(credentials.SESSION_PROGRESS_STAGES), progress)
+
+    def test_read_only_iam_audit_has_explicit_boundary_and_never_opens_session(self):
+        self.assertFalse(iam_audit.public_plan()["awsApiCalls"])
+        with (
+            patch.object(credentials, "load_private_review", return_value=review()),
+            patch.object(iam_audit, "require_tool") as require,
+            patch.object(credentials, "verify_aws_identity") as verify,
+            patch.object(credentials, "open_session") as open_session,
+        ):
+            result = iam_audit.run_audit(
+                Path("review.json"),
+                "audit-only",
+                iam_audit.ACKNOWLEDGEMENT,
+            )
+        require.assert_called_once_with("aws")
+        verify.assert_called_once_with(contract(), "audit-only", review())
+        open_session.assert_not_called()
+        self.assertTrue(result["awsApiCalls"])
+        self.assertFalse(result["awsResourceMutation"])
+        self.assertFalse(result["kubernetesApiCalls"])
+        self.assertFalse(result["platformTargetRoleSessionsIssued"])
+        self.assertFalse(result["sessionSecretPublished"])
+
+    def test_read_only_iam_audit_requires_ack_before_loading_review(self):
+        with (
+            patch.object(credentials, "load_private_review") as load,
+            self.assertRaisesRegex(ToolError, "acknowledgement"),
+        ):
+            iam_audit.run_audit(Path("review.json"), "audit-only", "")
+        load.assert_not_called()
+
+    def test_aws_read_failure_reports_only_safe_operation(self):
+        with (
+            patch.object(credentials, "_run_json", side_effect=ToolError("private stderr")),
+            self.assertRaisesRegex(ToolError, "iam:get-role") as raised,
+        ):
+            credentials._aws("audit-only", "us-east-1", "iam", "get-role")
+        self.assertNotIn("private stderr", str(raised.exception))
 
     def test_pending_review_and_legacy_runtime_approval_never_call_external_tools(self):
         pending = review() | {"reviewStatus": "PENDING_SECURITY_APPROVAL"}

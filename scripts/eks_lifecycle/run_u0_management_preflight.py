@@ -71,6 +71,7 @@ JOURNAL_EVENTS = {
     "DEFINITIONS_STARTED",
     "DEFINITIONS_APPLIED",
     "SESSION_STARTED",
+    *credentials.SESSION_PROGRESS_STAGES,
     "SESSION_OPENED",
     "CONTROLLERS_STARTED",
     "VERIFIED",
@@ -655,6 +656,8 @@ class RealOperations:
         contract: U0Contract,
         profile: str,
         audit_profile: str,
+        *,
+        progress: Any = None,
     ) -> None:
         credentials.open_session(
             contract.bootstrap,
@@ -662,6 +665,7 @@ class RealOperations:
             audit_profile,
             contract.session_review,
             SESSION_ACKNOWLEDGEMENT,
+            progress=progress,
         )
 
     def _patch_replicas(
@@ -860,7 +864,12 @@ def execute(
         authorization_tool.verify_claim(contract.authorization_path)
         session_attempted = True
         journal.append("SESSION_STARTED")
-        ops.open_session(contract, profile, audit_profile)
+        ops.open_session(
+            contract,
+            profile,
+            audit_profile,
+            progress=journal.append,
+        )
         journal.append("SESSION_OPENED")
 
         authorization_tool.verify_claim(contract.authorization_path)

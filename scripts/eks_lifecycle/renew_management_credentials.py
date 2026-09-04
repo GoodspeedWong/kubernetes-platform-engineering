@@ -18,7 +18,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import unquote
 
 from common import EKS_ROOT, ToolError, load_yaml, require_tool
@@ -28,6 +28,13 @@ REMOTE_SECRET_NAME = "eks-platform-aws-session"
 ACKNOWLEDGEMENT = "I-APPROVE-ONE-SHOT-60-MINUTE-SESSION-AND-PROVIDER-ROLLOUT"
 SESSION_MODE = "on-demand-60m"
 MAX_SESSION_SECONDS = 3600
+SESSION_PROGRESS_STAGES = (
+    "SESSION_PUBLICATION_GATE_VERIFIED",
+    "SESSION_IAM_VERIFIED",
+    "SESSION_SOURCE_EXPORTED",
+    "SESSION_TARGETS_ASSUMED",
+    "SESSION_SECRET_PUBLISHED",
+)
 TAG_PREFIX = "platform.aws.goodnotes.io/"
 ROLE_ARN_RE = re.compile(r"^arn:aws:iam::(?P<account>[0-9]{12}):role/(?P<name>[A-Za-z0-9+=,.@_/-]+)$")
 BOUNDARY_RE = re.compile(r"^arn:aws:iam::[0-9]{12}:policy/[A-Za-z0-9+=,.@_/-]+$")
@@ -128,7 +135,31 @@ def _run_json(command: list[str], *, input_text: str | None = None,
 
 
 def _aws(profile: str, region: str, *args: str) -> Any:
-    return _run_json(["aws", "--profile", profile, "--region", region, *args, "--output", "json"])
+    operation = "unknown"
+    if (
+        len(args) >= 2
+        and re.fullmatch(r"[a-z0-9-]+", args[0])
+        and re.fullmatch(r"[a-z0-9-]+", args[1])
+    ):
+        operation = f"{args[0]}:{args[1]}"
+    try:
+        return _run_json(
+            ["aws", "--profile", profile, "--region", region, *args, "--output", "json"]
+        )
+    except ToolError as error:
+        raise ToolError(
+            f"AWS read-only operation {operation} failed; output suppressed"
+        ) from error
+
+
+def _report_session_progress(
+    progress: Callable[[str], None] | None,
+    stage: str,
+) -> None:
+    if stage not in SESSION_PROGRESS_STAGES:
+        raise ToolError("unreviewed management-session progress stage")
+    if progress is not None:
+        progress(stage)
 
 
 def canonical(value: Any) -> Any:
@@ -515,7 +546,8 @@ def load_private_review(path: Path) -> dict[str, Any]:
 
 
 def open_session(contract: BootstrapContract, profile: str, audit_profile: str,
-                 review: dict[str, Any], acknowledgement: str) -> dict[str, Any]:
+                 review: dict[str, Any], acknowledgement: str, *,
+                 progress: Callable[[str], None] | None = None) -> dict[str, Any]:
     if acknowledgement != ACKNOWLEDGEMENT:
         raise ToolError("explicit one-shot session and rollout acknowledgement required")
     if (not profile or not audit_profile or profile == audit_profile
@@ -530,11 +562,16 @@ def open_session(contract: BootstrapContract, profile: str, audit_profile: str,
     # Check readiness before minting credentials, and again before publication.
     verify_publication_gate(contract)
     require_closed_window(contract, session_metadata(contract.context))
+    _report_session_progress(progress, "SESSION_PUBLICATION_GATE_VERIFIED")
     verify_aws_identity(contract, audit_profile, review)
+    _report_session_progress(progress, "SESSION_IAM_VERIFIED")
     source = _run_json(["aws", "--profile", profile, "--region", contract.region,
                         "configure", "export-credentials", "--format", "process"])
+    _report_session_progress(progress, "SESSION_SOURCE_EXPORTED")
     sessions = verify_session(contract, source)
+    _report_session_progress(progress, "SESSION_TARGETS_ASSUMED")
     publish_session(contract, sessions)
+    _report_session_progress(progress, "SESSION_SECRET_PUBLISHED")
     first, last = validate_targets(sessions)
     return {"status": "session-published", "sessionMode": SESSION_MODE,
             "expiresAt": first.isoformat(), "allSessionsExpireAt": last.isoformat(),

@@ -5,21 +5,20 @@ metadata:
   annotations:
     platform.aws.goodnotes.io/template: "true"
     platform.aws.goodnotes.io/do-not-apply: "true"
-spec:
-  data:
-    schemaVersion: 1
-    kubernetes: "1.35"
-    crossplane:
-      core: v2.2.1
-      cli: v2.3.0
-    cilium:
-      chart: "1.20.1"
-      app: "1.20.1"
-    karpenter:
-      crdChart: "1.14.1"
-      controllerChart: "1.14.1"
-      app: "1.14.1"
-    argoCD:
-      chart: "10.4.0"
-      app: v3.5.1
-    coreDNSAddon: v1.14.3-eksbuild.3
+data:
+  schemaVersion: 1
+  kubernetes: "1.35"
+  crossplane:
+    core: v2.2.1
+    cli: v2.3.0
+  cilium:
+    chart: "1.20.1"
+    app: "1.20.1"
+  karpenter:
+    crdChart: "1.14.1"
+    controllerChart: "1.14.1"
+    app: "1.14.1"
+  argoCD:
+    chart: "10.4.0"
+    app: v3.5.1
+  coreDNSAddon: v1.14.3-eksbuild.3

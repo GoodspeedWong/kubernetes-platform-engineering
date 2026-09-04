@@ -191,7 +191,7 @@ class P4ClusterTests(unittest.TestCase):
         self.assertIn('type = "CatalogResolved"', self.source)
 
         extra = render_cluster.default_extra_resources()
-        expected = extra["platform-release"][0]["Resource"]["spec"]["data"][
+        expected = extra["platform-release"][0]["Resource"]["data"][
             "coreDNSAddon"
         ]
         addon = self.initial_resources["coredns-addon"]
@@ -207,7 +207,7 @@ class P4ClusterTests(unittest.TestCase):
             )
 
         incompatible = render_cluster.default_extra_resources()
-        incompatible["platform-release"][0]["Resource"]["spec"]["data"][
+        incompatible["platform-release"][0]["Resource"]["data"][
             "coreDNSAddon"
         ] = "v0.0.0-eksbuild.0"
         with self.assertRaisesRegex(

@@ -429,6 +429,30 @@ def verify_checksums(directory: Path) -> int:
     return len(checksums)
 
 
+def validate_catalog_candidate(document: Any, label: str) -> None:
+    if not isinstance(document, dict):
+        raise ToolError(f"{label} candidate must be a YAML object")
+    if (
+        document.get("apiVersion") != "apiextensions.crossplane.io/v1beta1"
+        or document.get("kind") != "EnvironmentConfig"
+    ):
+        raise ToolError(f"{label} candidate must be EnvironmentConfig v1beta1")
+    if "spec" in document or set(document) != {
+        "apiVersion",
+        "kind",
+        "metadata",
+        "data",
+    }:
+        raise ToolError(f"{label} EnvironmentConfig data must be a top-level field")
+    name = document.get("metadata", {}).get("name") if isinstance(
+        document.get("metadata"), dict
+    ) else None
+    if not isinstance(name, str) or not name:
+        raise ToolError(f"{label} candidate must have metadata.name")
+    if not isinstance(document.get("data"), dict) or not document["data"]:
+        raise ToolError(f"{label} EnvironmentConfig data must be a non-empty object")
+
+
 def _validate_candidate_inputs(directory: Path) -> None:
     for name in (
         "environment.candidate.yaml",
@@ -438,6 +462,8 @@ def _validate_candidate_inputs(directory: Path) -> None:
         document = load_yaml(directory / name)
         if find_placeholders(document):
             raise ToolError("U0 candidate contains a test placeholder")
+        if name != "environment.candidate.yaml":
+            validate_catalog_candidate(document, name.removesuffix(".candidate.yaml"))
     for name in ("u0-inputs.json", "aws-readonly-snapshot.json"):
         if find_placeholders(_load_json(directory / name)):
             raise ToolError("U0 private input contains a test placeholder")

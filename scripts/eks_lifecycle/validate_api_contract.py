@@ -327,13 +327,15 @@ def validate_catalog_compatibility(
             raise ToolError(f"{label} name does not match its reference")
 
     version = parameters["kubernetesVersion"]
+    if "spec" in platform_release or "spec" in node_image:
+        raise ToolError("EnvironmentConfig data must be a top-level field")
     release_data = require_mapping(
-        require_mapping(platform_release.get("spec"), "platform release.spec").get("data"),
-        "platform release.spec.data",
+        platform_release.get("data"),
+        "platform release.data",
     )
     image_data = require_mapping(
-        require_mapping(node_image.get("spec"), "node image.spec").get("data"),
-        "node image.spec.data",
+        node_image.get("data"),
+        "node image.data",
     )
     if str(release_data.get("kubernetes")) != version:
         raise ToolError("platform release is incompatible with kubernetesVersion")

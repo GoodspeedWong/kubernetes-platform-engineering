@@ -64,7 +64,18 @@ class U0AuthorizationTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    def write_bundle(self, document: dict) -> Path:
+    def write_bundle(
+        self,
+        document: dict,
+        *,
+        catalog_payload: bytes | None = None,
+    ) -> Path:
+        catalog_payload = catalog_payload or (
+            b"apiVersion: apiextensions.crossplane.io/v1beta1\n"
+            b"kind: EnvironmentConfig\n"
+            b"metadata:\n  name: safe\n"
+            b"data:\n  safe: true\n"
+        )
         payloads = {
             "REVIEW_SUMMARY.md": b"private review\n",
             "authorization-contract.json": (
@@ -72,8 +83,8 @@ class U0AuthorizationTests(unittest.TestCase):
             ).encode(),
             "aws-readonly-snapshot.json": b'{"snapshot":"safe"}\n',
             "environment.candidate.yaml": b"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: safe\n",
-            "node-image.candidate.yaml": b"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: safe\n",
-            "platform-release.candidate.yaml": b"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: safe\n",
+            "node-image.candidate.yaml": catalog_payload,
+            "platform-release.candidate.yaml": catalog_payload,
             "u0-inputs.json": b'{"inputs":"safe"}\n',
         }
         for name, payload in payloads.items():
@@ -106,6 +117,17 @@ class U0AuthorizationTests(unittest.TestCase):
         self.assertEqual(11, len(u0.DECISION_KEYS))
         self.assertFalse(result["awsResourceMutationAllowed"])
         self.assertEqual(6, result["kubernetesMutationActions"])
+
+    def test_catalog_candidates_require_live_environment_config_envelope(self) -> None:
+        legacy = (
+            b"apiVersion: apiextensions.crossplane.io/v1beta1\n"
+            b"kind: EnvironmentConfig\n"
+            b"metadata:\n  name: safe\n"
+            b"spec:\n  data:\n    safe: true\n"
+        )
+        path = self.write_bundle(authorization(), catalog_payload=legacy)
+        with self.assertRaisesRegex(ToolError, "top-level field"):
+            u0.validate_authorization(path, require_approved=False)
 
     def test_scope_drift_fails_even_with_refreshed_checksums(self) -> None:
         document = authorization(u0.APPROVED_STATUS)

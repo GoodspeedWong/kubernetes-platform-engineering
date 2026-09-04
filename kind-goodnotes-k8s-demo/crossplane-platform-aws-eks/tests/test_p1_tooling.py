@@ -135,8 +135,10 @@ class P1ToolingTests(unittest.TestCase):
         lock = common.load_yaml(EKS_ROOT / "versions.lock.yaml")
         releases = common.load_yaml(EKS_ROOT / "catalog" / "platform-releases.template.yaml")
         images = common.load_yaml(EKS_ROOT / "catalog" / "node-images.template.yaml")
-        release_data = releases["spec"]["data"]
-        image_data = images["spec"]["data"]
+        self.assertNotIn("spec", releases)
+        self.assertNotIn("spec", images)
+        release_data = releases["data"]
+        image_data = images["data"]
         self.assertEqual(release_data["kubernetes"], lock["targets"]["workloadPlane"]["eksKubernetes"])
         self.assertEqual(release_data["cilium"]["chart"], lock["charts"]["cilium"]["version"])
         self.assertEqual(

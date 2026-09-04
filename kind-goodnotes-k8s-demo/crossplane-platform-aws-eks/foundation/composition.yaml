@@ -75,8 +75,8 @@ spec:
                 assert _node_image_resource?.apiVersion == "apiextensions.crossplane.io/v1beta1", "nodeImageRef resolved an unsupported apiVersion"
                 assert _node_image_resource?.kind == "EnvironmentConfig", "nodeImageRef resolved an unsupported kind"
                 assert _node_image_resource?.metadata?.name == node_image_ref.name, "nodeImageRef resolved the wrong EnvironmentConfig"
-                _platform_release_data = _platform_release_resource?.spec?.data or {}
-                _node_image_data = _node_image_resource?.spec?.data or {}
+                _platform_release_data = _platform_release_resource?.data or {}
+                _node_image_data = _node_image_resource?.data or {}
                 _node_image_amd64 = _node_image_data?.images?.amd64 or {}
                 assert _platform_release_data?.schemaVersion == 1, "platform release schemaVersion must be 1"
                 assert _platform_release_data?.kubernetes == params.kubernetesVersion, "platform release kubernetes version is incompatible"

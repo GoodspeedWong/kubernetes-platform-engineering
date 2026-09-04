@@ -253,8 +253,8 @@ class P6KarpenterTests(unittest.TestCase):
 
     def test_catalog_refs_drive_foundation_versions_and_fail_closed(self) -> None:
         extra = render_foundation.default_extra_resources()
-        platform = extra["platform-release"][0]["Resource"]["spec"]["data"]
-        node_image = extra["node-image"][0]["Resource"]["spec"]["data"]
+        platform = extra["platform-release"][0]["Resource"]["data"]
+        node_image = extra["node-image"][0]["Resource"]["data"]
         self.assertIn('kind = "ExtraResources"', self.source)
         self.assertIn("platform_release_ref.name", self.source)
         self.assertIn("node_image_ref.name", self.source)
@@ -276,7 +276,7 @@ class P6KarpenterTests(unittest.TestCase):
         )
 
         changed = render_foundation.default_extra_resources()
-        changed["node-image"][0]["Resource"]["spec"]["data"]["images"][
+        changed["node-image"][0]["Resource"]["data"]["images"][
             "amd64"
         ]["amiId"] = "ami-0fedcba9876543210"
         changed_render = render_foundation.render(
@@ -303,7 +303,7 @@ class P6KarpenterTests(unittest.TestCase):
             )
 
         incompatible = render_foundation.default_extra_resources()
-        incompatible["node-image"][0]["Resource"]["spec"]["data"]["images"][
+        incompatible["node-image"][0]["Resource"]["data"]["images"][
             "amd64"
         ]["alias"] = "al2023@v20260827"
         with self.assertRaisesRegex(

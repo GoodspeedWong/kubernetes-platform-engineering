@@ -444,6 +444,23 @@ class U0ManagementPreflightTests(unittest.TestCase):
         with (
             patch.object(runner.authorization_tool, "verify_claim"),
             patch.object(runner, "_run_suppressed") as command,
+            self.assertRaisesRegex(ToolError, "top-level field"),
+        ):
+            operations._apply_document(
+                reviewed,
+                {
+                    "apiVersion": "apiextensions.crossplane.io/v1beta1",
+                    "kind": "EnvironmentConfig",
+                    "metadata": {"name": "legacy"},
+                    "spec": {"data": {"safe": True}},
+                },
+                dry_run=True,
+            )
+        command.assert_not_called()
+
+        with (
+            patch.object(runner.authorization_tool, "verify_claim"),
+            patch.object(runner, "_run_suppressed") as command,
             self.assertRaisesRegex(ToolError, "Function document differs"),
         ):
             operations._apply_document(

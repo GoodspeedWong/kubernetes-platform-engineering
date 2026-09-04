@@ -606,6 +606,11 @@ class RealOperations:
             }
             if document != reviewed.get(document.get("metadata", {}).get("name")):
                 raise ToolError("U0 Function document differs from the reviewed digest pin")
+        if kind == "EnvironmentConfig":
+            authorization_tool.validate_catalog_candidate(
+                document,
+                str(document.get("metadata", {}).get("name", "catalog")),
+            )
         if kind == "XEKSEnvironment" and not dry_run:
             raise ToolError("U0 forbids persisting the environment candidate")
         command = [

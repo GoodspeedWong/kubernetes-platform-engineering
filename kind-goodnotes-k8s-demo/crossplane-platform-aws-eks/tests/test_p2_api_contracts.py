@@ -423,6 +423,20 @@ class P2APIContractTests(unittest.TestCase):
                 self.lock,
             )
 
+    def test_legacy_environment_config_spec_data_is_rejected(self) -> None:
+        legacy = copy.deepcopy(self.release)
+        legacy["spec"] = {"data": legacy.pop("data")}
+        with self.assertRaisesRegex(
+            common.ToolError,
+            "EnvironmentConfig data must be a top-level field",
+        ):
+            api_contract.validate_environment(
+                self.instance,
+                legacy,
+                self.node_image,
+                self.lock,
+            )
+
     def test_retirement_old_new_transition_matrix(self) -> None:
         for case in self.negative_cases["retirementTransitions"]:
             with self.subTest(old=case["old"], new=case["new"]):

@@ -4,18 +4,17 @@ metadata:
   name: test-only-platform-release
   annotations:
     platform.aws.goodnotes.io/test-only: "true"
-spec:
-  data:
-    schemaVersion: 1
-    kubernetes: "1.35"
-    cilium:
-      chart: "1.20.1"
-      app: "1.20.1"
-    karpenter:
-      crdChart: "1.14.1"
-      controllerChart: "1.14.1"
-      app: "1.14.1"
-    argoCD:
-      chart: "10.4.0"
-      app: v3.5.1
-    coreDNSAddon: v1.14.3-eksbuild.3
+data:
+  schemaVersion: 1
+  kubernetes: "1.35"
+  cilium:
+    chart: "1.20.1"
+    app: "1.20.1"
+  karpenter:
+    crdChart: "1.14.1"
+    controllerChart: "1.14.1"
+    app: "1.14.1"
+  argoCD:
+    chart: "10.4.0"
+    app: v3.5.1
+  coreDNSAddon: v1.14.3-eksbuild.3

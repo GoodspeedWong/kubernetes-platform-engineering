@@ -110,6 +110,21 @@ class U0AuthorizationTests(unittest.TestCase):
         with self.assertRaisesRegex(ToolError, "not approved"):
             u0.validate_authorization(path, require_approved=True)
 
+    def test_same_day_sequence_bundle_is_supported_without_reusing_a_claim(self) -> None:
+        sequenced = self.directory.with_name("u0-preflight-2026-09-02-02")
+        self.directory.rename(sequenced)
+        self.directory = sequenced
+        document = authorization()
+        document["bundle"] = self.directory.name
+        document["windowId"] = "u0-20260902-02"
+        result = u0.validate_authorization(
+            self.write_bundle(document),
+            require_approved=False,
+        )
+        self.assertEqual(self.directory.name, result["bundle"])
+        self.assertEqual("u0-20260902-02", result["windowId"])
+        self.assertFalse(result["approved"])
+
     def test_approved_window_requires_all_decisions_and_exact_scope(self) -> None:
         path = self.write_bundle(authorization(u0.APPROVED_STATUS))
         result = u0.validate_authorization(path, require_approved=True)

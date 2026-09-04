@@ -28,7 +28,9 @@ CLAIM_SCHEMA_VERSION = 2
 CLAIM_STATUS = "CLAIMED_FOR_EXECUTION"
 CLAIM_ACKNOWLEDGEMENT = "I-CLAIM-ONE-U0-MANAGEMENT-PREFLIGHT-WINDOW"
 CLAIM_ROOT = Path.home() / ".local/share/eks-platform/u0-authorizations"
-BUNDLE_RE = re.compile(r"^u0-preflight-[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+BUNDLE_RE = re.compile(
+    r"^u0-preflight-[0-9]{4}-[0-9]{2}-[0-9]{2}(?:-[0-9]{2})?$"
+)
 WINDOW_RE = re.compile(r"^u0-[0-9]{8}-[0-9]{2}$")
 CHECKSUM_RE = re.compile(r"^([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$")
 GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")

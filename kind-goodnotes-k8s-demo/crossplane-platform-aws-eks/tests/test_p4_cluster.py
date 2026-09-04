@@ -18,6 +18,7 @@ sys.path.insert(0, str(SCRIPT_ROOT))
 
 import common  # noqa: E402
 import render_cluster  # noqa: E402
+import run_u1_bootstrap as u1_runner  # noqa: E402
 
 
 RESOURCE_NAME = "krm.kcl.dev/composition-resource-name"
@@ -104,6 +105,38 @@ class P4ClusterTests(unittest.TestCase):
         ):
             self.assertNotIn(name, self.initial_resources)
             self.assertIn(name, self.staged_resources)
+
+    def test_u1_iam_conflict_names_match_composition_external_names(self) -> None:
+        role_resources = (
+            "eks-cluster-role",
+            "fargate-pod-execution-role",
+            "karpenter-controller-role",
+            "cilium-operator-role",
+            "ec2-node-role",
+        )
+        observed = {
+            self.staged_resources[name]["metadata"]["annotations"][
+                "crossplane.io/external-name"
+            ]
+            for name in role_resources
+        }
+        expected = {
+            f"eks-dev-spot-{suffix}"
+            for suffix in u1_runner.ENVIRONMENT_IAM_ROLE_SUFFIXES
+        }
+        self.assertEqual(expected, observed)
+        profile = self.staged_resources["ec2-node-instance-profile"]
+        self.assertEqual(
+            {
+                f"eks-dev-spot-{suffix}"
+                for suffix in u1_runner.ENVIRONMENT_IAM_INSTANCE_PROFILE_SUFFIXES
+            },
+            {
+                profile["metadata"]["annotations"][
+                    "crossplane.io/external-name"
+                ]
+            },
+        )
 
     def test_every_rendered_resource_matches_locked_crd_field_schema(self) -> None:
         for name, resource in self.staged_resources.items():

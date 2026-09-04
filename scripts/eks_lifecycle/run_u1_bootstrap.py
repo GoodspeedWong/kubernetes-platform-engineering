@@ -69,16 +69,18 @@ READ_ONLY_AWS_OPERATIONS = {
     ("sqs", "list-queues"),
     ("events", "list-rules"),
     ("iam", "get-role"),
+    ("iam", "get-instance-profile"),
     ("service-quotas", "get-service-quota"),
 }
 
 ENVIRONMENT_IAM_ROLE_SUFFIXES = (
-    "eks-cluster",
+    "eks-control",
     "fargate-pod",
-    "karpenter-controller",
-    "cilium-operator",
+    "karpenter",
+    "cilium",
     "ec2-node",
 )
+ENVIRONMENT_IAM_INSTANCE_PROFILE_SUFFIXES = ("ec2-node",)
 
 JOURNAL_EVENTS = {
     "CLAIMED",
@@ -479,7 +481,7 @@ class RealOperations(u0_runner.RealOperations):
             if (
                 allow_no_such_entity
                 and service == "iam"
-                and operation == "get-role"
+                and operation in {"get-role", "get-instance-profile"}
                 and "NoSuchEntity" in result.stderr
             ):
                 return None
@@ -630,6 +632,18 @@ class RealOperations(u0_runner.RealOperations):
                 allow_no_such_entity=True,
             )
             iam_count += int(role is not None)
+        instance_profile_count = 0
+        for suffix in ENVIRONMENT_IAM_INSTANCE_PROFILE_SUFFIXES:
+            profile_document = self._aws_json(
+                contract,
+                profile,
+                "iam",
+                "get-instance-profile",
+                "--instance-profile-name",
+                f"{contract.environment}-{suffix}",
+                allow_no_such_entity=True,
+            )
+            instance_profile_count += int(profile_document is not None)
         reservations = self._aws_json(
             contract,
             profile,
@@ -666,6 +680,7 @@ class RealOperations(u0_runner.RealOperations):
             "sqsQueues": len(sqs.get("QueueUrls", []) or []),
             "eventRules": len(rules.get("Rules", []) or []),
             "environmentIamRoles": iam_count,
+            "environmentIamInstanceProfiles": instance_profile_count,
         }
 
     def verify_eks_release_availability(

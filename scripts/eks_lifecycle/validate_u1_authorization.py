@@ -68,6 +68,7 @@ TARGET_CONFLICT_KEYS = {
     "sqsQueues",
     "eventRules",
     "environmentIamRoles",
+    "environmentIamInstanceProfiles",
 }
 
 SERVICE_LINKED_ROLES = {

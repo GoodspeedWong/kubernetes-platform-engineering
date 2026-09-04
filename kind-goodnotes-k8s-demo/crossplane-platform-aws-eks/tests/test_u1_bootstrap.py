@@ -531,6 +531,17 @@ class U1BootstrapTests(unittest.TestCase):
                     allow_no_such_entity=True,
                 )
             )
+            self.assertIsNone(
+                operations._aws_json(
+                    reviewed,
+                    reviewed.audit_profile,
+                    "iam",
+                    "get-instance-profile",
+                    "--instance-profile-name",
+                    "missing",
+                    allow_no_such_entity=True,
+                )
+            )
 
         empty = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="", stderr=""
@@ -564,7 +575,10 @@ class U1BootstrapTests(unittest.TestCase):
                 return {}
             if (service, operation) == ("events", "list-rules"):
                 return {"Rules": []}
-            if (service, operation) == ("iam", "get-role"):
+            if service == "iam" and operation in {
+                "get-role",
+                "get-instance-profile",
+            }:
                 return None
             if (service, operation) == ("ec2", "describe-instances"):
                 return {"Reservations": []}
@@ -581,6 +595,50 @@ class U1BootstrapTests(unittest.TestCase):
             if item.args[3] == "describe-nat-gateways"
         )
         self.assertEqual("--filter", nat_call.kwargs["filters"][0])
+
+    def test_iam_conflict_inventory_uses_exact_environment_names(self) -> None:
+        operations = runner.RealOperations()
+        reviewed = contract()
+        role_names: list[str] = []
+        instance_profile_names: list[str] = []
+
+        def aws(_contract, _profile, service, operation, *args, **_kwargs):
+            if (service, operation) == ("eks", "list-clusters"):
+                return {"clusters": []}
+            if (service, operation) == ("sqs", "list-queues"):
+                return {}
+            if (service, operation) == ("events", "list-rules"):
+                return {"Rules": []}
+            if (service, operation) == ("iam", "get-role"):
+                role_names.append(args[1])
+                return None
+            if (service, operation) == ("iam", "get-instance-profile"):
+                instance_profile_names.append(args[1])
+                return None
+            if (service, operation) == ("ec2", "describe-instances"):
+                return {"Reservations": []}
+            raise AssertionError((service, operation))
+
+        with (
+            patch.object(operations, "_aws_json", side_effect=aws),
+            patch.object(operations, "_tagged_count", return_value=0),
+        ):
+            conflicts = operations.aws_conflicts(
+                reviewed, reviewed.audit_profile
+            )
+        self.assertEqual(
+            [
+                "eks-dev-spot-eks-control",
+                "eks-dev-spot-fargate-pod",
+                "eks-dev-spot-karpenter",
+                "eks-dev-spot-cilium",
+                "eks-dev-spot-ec2-node",
+            ],
+            role_names,
+        )
+        self.assertEqual(["eks-dev-spot-ec2-node"], instance_profile_names)
+        self.assertEqual(0, conflicts["environmentIamRoles"])
+        self.assertEqual(0, conflicts["environmentIamInstanceProfiles"])
 
     def test_eks_and_coredns_release_are_verified_with_read_only_calls(self) -> None:
         operations = runner.RealOperations()

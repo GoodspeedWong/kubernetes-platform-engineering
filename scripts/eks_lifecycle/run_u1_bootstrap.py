@@ -421,6 +421,8 @@ class RealOperations(u0_runner.RealOperations):
             ):
                 return None
             raise ToolError("U1 read-only AWS command failed; output suppressed")
+        if not result.stdout.strip() and (service, operation) == ("sqs", "list-queues"):
+            return {}
         try:
             value = json.loads(result.stdout)
         except json.JSONDecodeError as error:
@@ -583,7 +585,17 @@ class RealOperations(u0_runner.RealOperations):
             "subnets": self._tagged_count(contract, profile, "ec2", "describe-subnets", "Subnets", filters=tag_filter),
             "routeTables": self._tagged_count(contract, profile, "ec2", "describe-route-tables", "RouteTables", filters=tag_filter),
             "internetGateways": self._tagged_count(contract, profile, "ec2", "describe-internet-gateways", "InternetGateways", filters=tag_filter),
-            "natGateways": self._tagged_count(contract, profile, "ec2", "describe-nat-gateways", "NatGateways", filters=tag_filter),
+            "natGateways": self._tagged_count(
+                contract,
+                profile,
+                "ec2",
+                "describe-nat-gateways",
+                "NatGateways",
+                filters=(
+                    "--filter",
+                    f"Name=tag:platform.aws.goodnotes.io/environment,Values={contract.environment}",
+                ),
+            ),
             "elasticIps": self._tagged_count(contract, profile, "ec2", "describe-addresses", "Addresses", filters=tag_filter),
             "securityGroups": self._tagged_count(contract, profile, "ec2", "describe-security-groups", "SecurityGroups", filters=tag_filter),
             "networkInterfaces": self._tagged_count(contract, profile, "ec2", "describe-network-interfaces", "NetworkInterfaces", filters=tag_filter),

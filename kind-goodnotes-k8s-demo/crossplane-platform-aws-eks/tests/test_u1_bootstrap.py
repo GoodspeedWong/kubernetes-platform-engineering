@@ -418,6 +418,56 @@ class U1BootstrapTests(unittest.TestCase):
                 )
             )
 
+        empty = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        with patch.object(subprocess, "run", return_value=empty):
+            self.assertEqual(
+                {},
+                operations._aws_json(
+                    reviewed,
+                    reviewed.audit_profile,
+                    "sqs",
+                    "list-queues",
+                ),
+            )
+            with self.assertRaisesRegex(ToolError, "response is invalid"):
+                operations._aws_json(
+                    reviewed,
+                    reviewed.audit_profile,
+                    "ec2",
+                    "describe-vpcs",
+                )
+
+    def test_nat_gateway_inventory_uses_its_singular_filter_option(self) -> None:
+        operations = runner.RealOperations()
+        reviewed = contract()
+
+        def aws(_contract, _profile, service, operation, *_args, **_kwargs):
+            if (service, operation) == ("eks", "list-clusters"):
+                return {"clusters": []}
+            if (service, operation) == ("sqs", "list-queues"):
+                return {}
+            if (service, operation) == ("events", "list-rules"):
+                return {"Rules": []}
+            if (service, operation) == ("iam", "get-role"):
+                return None
+            if (service, operation) == ("ec2", "describe-instances"):
+                return {"Reservations": []}
+            raise AssertionError((service, operation))
+
+        with (
+            patch.object(operations, "_aws_json", side_effect=aws),
+            patch.object(operations, "_tagged_count", return_value=0) as count,
+        ):
+            operations.aws_conflicts(reviewed, reviewed.audit_profile)
+        nat_call = next(
+            item
+            for item in count.call_args_list
+            if item.args[3] == "describe-nat-gateways"
+        )
+        self.assertEqual("--filter", nat_call.kwargs["filters"][0])
+
     def test_environment_create_is_server_dry_run_then_single_create(self) -> None:
         operations = runner.RealOperations()
         reviewed = contract()

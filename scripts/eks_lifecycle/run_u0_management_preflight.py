@@ -385,6 +385,9 @@ def _run_names(command: list[str], *, timeout: int = 60) -> list[str]:
 
 
 class RealOperations:
+    def _verify_claim(self, contract: U0Contract) -> None:
+        authorization_tool.verify_claim(contract.authorization_path)
+
     def _kube(self, contract: U0Contract, *args: str, body: Any | None = None) -> Any:
         return credentials._run_json(
             [
@@ -497,7 +500,7 @@ class RealOperations:
         base = ["kubectl", "--context", contract.bootstrap.context]
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
-            authorization_tool.verify_claim(contract.authorization_path)
+            self._verify_claim(contract)
             discovered = set(
                 _run_names(
                     base
@@ -561,7 +564,7 @@ class RealOperations:
         )
 
     def protect(self, contract: U0Contract) -> None:
-        authorization_tool.verify_claim(contract.authorization_path)
+        self._verify_claim(contract)
         self._harden(contract, "protect")
 
     def _apply_kustomization(
@@ -571,7 +574,7 @@ class RealOperations:
         *,
         dry_run: bool,
     ) -> None:
-        authorization_tool.verify_claim(contract.authorization_path)
+        self._verify_claim(contract)
         if root.resolve() not in {item.resolve() for item in APPLY_KUSTOMIZATIONS}:
             raise ToolError("U0 kustomization path is not reviewed")
         command = [
@@ -592,7 +595,7 @@ class RealOperations:
         *,
         dry_run: bool,
     ) -> None:
-        authorization_tool.verify_claim(contract.authorization_path)
+        self._verify_claim(contract)
         kind = document.get("kind")
         if kind not in {
             "ClusterProviderConfig",
@@ -688,7 +691,7 @@ class RealOperations:
         )
         for name in names:
             if require_active_claim:
-                authorization_tool.verify_claim(contract.authorization_path)
+                self._verify_claim(contract)
             item = deployments[name]
             metadata = item["metadata"]
             if item.get("spec", {}).get("replicas", 1) == replicas:
@@ -728,7 +731,7 @@ class RealOperations:
         deadline = time.monotonic() + deadline_seconds
         while time.monotonic() < deadline:
             if require_active_claim:
-                authorization_tool.verify_claim(contract.authorization_path)
+                self._verify_claim(contract)
             deployments = self._deployment_map(contract)
             if set(contract.controller_names) == set(deployments):
                 ready = True
@@ -755,7 +758,7 @@ class RealOperations:
         )
 
     def verify(self, contract: U0Contract) -> dict[str, Any]:
-        authorization_tool.verify_claim(contract.authorization_path)
+        self._verify_claim(contract)
         self._assert_controller_identity(contract, allow_tagged_functions=False)
         runtime = runtime_verifier.verify_active(contract.bootstrap)
         online = preflight.online_read_only_checks(contract.bootstrap.context)

@@ -31,11 +31,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from common import REPO_ROOT, ToolError, load_yaml
+from common import EKS_ROOT, REPO_ROOT, ToolError, load_yaml
+import u1_environment_identity as environment_identity
 import renew_management_credentials as credentials
 import run_u0_management_preflight as u0_runner
 import validate_u1_authorization as authorization_tool
-
 
 RUN_ACKNOWLEDGEMENT = "I-APPROVE-EXECUTE-ONE-U1-BOOTSTRAP-CREATE-WINDOW"
 RECOVER_ACKNOWLEDGEMENT = "I-APPROVE-U1-PARK-RECOVERY-ONLY"
@@ -436,6 +436,7 @@ class RealOperations(u0_runner.RealOperations):
 
     def __init__(self) -> None:
         self._baseline_non_aws_identities: set[tuple[str, str, str, str]] = set()
+        self._root_composition_pin: environment_identity.CompositionPin | None = None
 
     def _verify_claim(self, contract: U1Contract) -> None:
         authorization_tool.verify_claim(contract.authorization_path)
@@ -1017,25 +1018,41 @@ class RealOperations(u0_runner.RealOperations):
         *,
         expected_uid: str | None,
     ) -> dict[str, Any]:
-        metadata = root.get("metadata", {})
-        expected_metadata = contract.environment_document["metadata"]
+        refs = environment_identity.validate_root(
+            root,
+            contract.environment_document,
+            expected_uid=expected_uid,
+        )
         if (
-            metadata.get("name") != contract.environment
-            or (expected_uid is not None and metadata.get("uid") != expected_uid)
-            or not metadata.get("uid")
-            or not authorization_tool._strict_equal(
-                metadata.get("labels"), expected_metadata["labels"]
-            )
-            or any(
-                metadata.get("annotations", {}).get(key) != value
-                for key, value in expected_metadata["annotations"].items()
-            )
-            or not authorization_tool._strict_equal(
-                root.get("spec"), contract.environment_document.get("spec")
-            )
+            self._root_composition_pin is not None
+            and root["metadata"]["labels"].get(environment_identity.COMPOSITE_LABEL)
+            != contract.environment
         ):
-            raise ToolError("U1 environment identity or reviewed intent changed")
-        return metadata
+            raise ToolError("U1 pinned composite identity label disappeared")
+        if refs.revision is not None:
+            composition = self._kube(
+                contract,
+                "get",
+                "composition.apiextensions.crossplane.io",
+                refs.composition,
+            )
+            revision = self._kube(
+                contract,
+                "get",
+                "compositionrevision.apiextensions.crossplane.io",
+                refs.revision,
+            )
+            locked = load_yaml(EKS_ROOT / "environment/composition.yaml")
+            self._root_composition_pin = environment_identity.validate_binding(
+                composition,
+                revision,
+                locked["spec"],
+                revision_name=refs.revision,
+                previous=self._root_composition_pin,
+            )
+        elif self._root_composition_pin is not None:
+            raise ToolError("U1 pinned CompositionRevision reference disappeared")
+        return root["metadata"]
 
     def _environment_snapshot(
         self, contract: U1Contract, expected_uid: str
@@ -1339,6 +1356,10 @@ class RealOperations(u0_runner.RealOperations):
         )
         environment_present = current is not None
         if current is not None:
+            if expected_environment_uid is None:
+                raise ToolError(
+                    "U1 preserved root UID was not recorded; independent recovery review required"
+                )
             self._assert_environment_identity(
                 contract,
                 current,
@@ -1543,6 +1564,40 @@ def execute(
     }
 
 
+def recovery_environment_uid(contract: U1Contract) -> str | None:
+    """Bind recovery to the recorded created root; never adopt a replacement."""
+    result = authorization_tool._load_json(
+        RESULT_ROOT / f"{contract.authorization['windowId']}.json"
+    )
+    expected = {
+        "schemaVersion": 1,
+        "windowId": contract.authorization["windowId"],
+        "bundle": contract.authorization["bundle"],
+        "reviewedGitCommit": contract.authorization["reviewedGitCommit"],
+        "executionCodeSha256": contract.authorization["executionCodeSha256"],
+        "singleUseClaimConsumed": True,
+    }
+    if any(
+        not environment_identity.strict_equal(result.get(k), v)
+        for k, v in expected.items()
+    ):
+        raise ToolError("U1 recovery result differs from the claimed window")
+    environment = result.get("environment")
+    if environment is None:
+        return None
+    if (
+        not isinstance(environment, dict)
+        or set(environment) != {"name", "uid", "generation"}
+        or environment["name"] != contract.environment
+        or not isinstance(environment["uid"], str)
+        or not environment["uid"]
+        or type(environment["generation"]) is not int
+        or environment["generation"] != 1
+    ):
+        raise ToolError("U1 recovery root identity was not recorded safely")
+    return environment["uid"]
+
+
 def recover(
     contract: U1Contract,
     acknowledgement: str,
@@ -1555,13 +1610,24 @@ def recover(
         contract.authorization_path,
         require_active=False,
     )
+    result_error: ToolError | None = None
+    try:
+        expected_uid = recovery_environment_uid(contract)
+    except ToolError as error:
+        # Still park the exact reviewed controllers and restore protection. A
+        # missing/corrupt result must not prevent safety actions or permit root
+        # adoption, and cannot yield a formal recovery-complete receipt.
+        result_error = error
+        expected_uid = None
     journal = Journal.existing(contract.authorization["windowId"])
     if journal is not None:
         journal.append("RECOVERY_STARTED")
     result = (operations or RealOperations()).cleanup(
         contract,
-        expected_environment_uid=None,
+        expected_environment_uid=expected_uid,
     )
+    if result_error is not None:
+        raise result_error
     if journal is not None:
         journal.append("RECOVERY_COMPLETE")
     return {

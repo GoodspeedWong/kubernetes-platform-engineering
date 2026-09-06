@@ -12,7 +12,6 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import call, patch
 
-
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts" / "eks_lifecycle"))
 
@@ -922,6 +921,7 @@ class U1BootstrapTests(unittest.TestCase):
         journal = FakeJournal()
         with (
             patch.object(runner.authorization_tool, "verify_claim") as verify,
+            patch.object(runner, "recovery_environment_uid", return_value="uid-1"),
             patch.object(runner.Journal, "existing", return_value=journal),
         ):
             result = runner.recover(
@@ -934,7 +934,7 @@ class U1BootstrapTests(unittest.TestCase):
             require_active=False,
         )
         self.assertEqual(["cleanup"], operations.calls)
-        self.assertIsNone(operations.cleanup_uid)
+        self.assertEqual("uid-1", operations.cleanup_uid)
         self.assertFalse(result["environmentDeletionAttempted"])
         self.assertFalse(result["directAwsApiCalls"])
         self.assertEqual(["RECOVERY_STARTED", "RECOVERY_COMPLETE"], journal.events)

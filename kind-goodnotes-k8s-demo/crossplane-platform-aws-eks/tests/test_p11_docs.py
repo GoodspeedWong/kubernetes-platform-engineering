@@ -4,7 +4,6 @@ import re
 import unittest
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EKS_ROOT = REPO_ROOT / "kind-goodnotes-k8s-demo" / "crossplane-platform-aws-eks"
 
@@ -119,8 +118,9 @@ class P11DocumentationTests(unittest.TestCase):
         uat = (EKS_ROOT / "UAT.md").read_text()
         for marker in (
             "U0=FAILED_CLOSED/RECOVERY_COMPLETE",
-            "U1–U5=NOT_RUN",
-            "AWS_RESOURCE_UAT=NOT_RUN",
+            "U1-01=ATTEMPTED_BLOCKED",
+            "U1-02～U5=NOT_RUN",
+            "U1_BOOTSTRAP_RECOVERY_REQUIRED",
             "测试资源与清理责任",
             "创建/清理 owner",
             "未知残留",
@@ -129,6 +129,10 @@ class P11DocumentationTests(unittest.TestCase):
             "InstanceLifecycle=spot",
         ):
             self.assertIn(marker, uat)
+        current = uat.split("## 1.", 1)[0]
+        self.assertNotIn("U1–U5=NOT_RUN", current)
+        self.assertIn("现场已停车", current)
+        self.assertIn("恢复", current)
 
     def test_todo_commands_match_implemented_high_fidelity_interfaces(self) -> None:
         todo = (EKS_ROOT / "TODO.md").read_text()

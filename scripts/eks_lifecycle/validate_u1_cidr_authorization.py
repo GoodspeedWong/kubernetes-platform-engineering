@@ -22,8 +22,10 @@ from common import ToolError
 import u1_cidr_amendment as amendment
 import u1_environment_identity as identity
 import validate_u1_continuation as continuation
+from u1_management_scope import EXISTING_WORKLOAD_BOUNDARY
 
 create = continuation.create
+SCHEMA_VERSION = 2
 TYPE = "u1-root-cidr-amendment"
 PENDING = "DRAFT_NOT_AUTHORIZED"
 APPROVED = "APPROVED_FOR_ONE_ROOT_CIDR_AMENDMENT"
@@ -45,9 +47,10 @@ SCOPE = {
     "awsApiCallsAllowed": False,
     "sessionAccessAllowed": "metadata-only absence check; no data, STS or publication",
     "controllerWritesAllowed": False,
+    "existingKindWorkloads": EXISTING_WORKLOAD_BOUNDARY,
     "permanentDefinitionWritesAllowed": False,
     "publicEgressProbesAllowed": "host proxy and KinD process-proxy-unset, separately",
-    "operatorMustExcludeConcurrentMaintenanceAndScheduledStarts": True,
+    "operatorMustExcludeConcurrentCrossplaneMaintenanceAndControllerStarts": True,
     "automaticRetryRollbackOrDeletionAllowed": False,
     "failureAction": "read-only diagnosis under separate authority; never patch again",
     "continuationAuthorized": False,
@@ -92,7 +95,9 @@ def validate(path, *, require_approved, historical=False):
     digest = continuation.digest(path)
     continuation.verify_bundle(path)
     doc = create._load_json(path)
-    if set(doc) != DOC_KEYS or not identity.strict_equal(doc.get("schemaVersion"), 1):
+    if set(doc) != DOC_KEYS or not identity.strict_equal(
+        doc.get("schemaVersion"), SCHEMA_VERSION
+    ):
         raise ToolError("CIDR authorization schema differs")
     bundle = BUNDLE_RE.fullmatch(str(doc["bundle"]))
     window = WINDOW_RE.fullmatch(str(doc["windowId"]))

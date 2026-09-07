@@ -57,7 +57,7 @@ def prepare(destination: Path, sources: dict) -> dict:
     window = f"u1c-{''.join(match.groups()[:3])}-{match[4]}"
     source_bytes = (json.dumps(sources, indent=2, sort_keys=True) + "\n").encode()
     document = {
-        "schemaVersion": 1,
+        "schemaVersion": auth.SCHEMA_VERSION,
         "authorizationType": auth.AUTHORIZATION_TYPE,
         "bundle": destination.name,
         "windowId": window,
@@ -90,6 +90,8 @@ def prepare(destination: Path, sources: dict) -> dict:
 ## 本次产出和证据边界
 
 本地准备只读入历史文件。没有 AWS/Kubernetes API、STS、Session Secret 或 controller 操作。
+本包使用 schema v2：KinD 仅为本项目的 Crossplane 控制面，既有业务不迁移、不接管、不调整副本或调度。
+历史业务快照仅保留文件完整性；不要求与当前业务一致。维护仅保护精确共享 XR/Object 的身份、意图与暂停标记。
 9 月 6 日独立 Kubernetes 只读停车确认用于绑定身份，不改写旧窗口结果，也不证明当前云库存为零。
 `sources.json` 绑定完整原包、create claim/result/journal、独立刷新包、独立 A05 review 和聚合范围外的 core RBAC 源。
 所有私有文件 0600，目录 0700；只检查摘要，不将凭据值写入本包。
@@ -100,7 +102,8 @@ def prepare(destination: Path, sources: dict) -> dict:
 只观察同一 root，绝不 create/apply/replace/patch/delete root 或永久定义。
 初始基线只支持 root=1、child XR=0、AWS managed resource=0、73 个原有非 AWS Object；
 AWS 14 类目标库存必须重新证明为零，不自动接管部分已创建资源。
-核对 14 个 controller UID、76 个共享对象、89 个业务副本/计划、63 份永久定义、Provider/Function owner chain。
+核对 14 个 controller UID、76 个共享 Crossplane 对象、63 份永久定义、Provider/Function owner chain。
+不枚举或比较现有业务 workloads；共享对象仅受本窗口暂停保护，绝不转为 EKS 生命周期所有物。
 只允许原 owner 层级到首个 U1 checkpoint；Spot-only、Karpenter Fargate-only、Cilium EC2-only 的原 intent 不变。
 最长 active 3000 秒，独立 A05 会话最多 3600 秒；失败先终止 active timer，再停车、清 Session、恢复共享对象。
 保留 root/cloud，云资源继续计费；7 天/70 USD 只是手工软预算。无自动重试、删除、U1-06/07、U2 或 Git bootstrap。

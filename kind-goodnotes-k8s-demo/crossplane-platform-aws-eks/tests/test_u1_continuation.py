@@ -54,7 +54,7 @@ class ContinuationAuthorizationTests(unittest.TestCase):
             "archivedSpotQuotaVerified": False,
         }
         self.doc = {
-            "schemaVersion": 1,
+            "schemaVersion": auth.SCHEMA_VERSION,
             "authorizationType": auth.AUTHORIZATION_TYPE,
             "bundle": self.directory.name,
             "windowId": "u1c-20260907-01",
@@ -146,6 +146,25 @@ class ContinuationAuthorizationTests(unittest.TestCase):
                 self.doc[field] = before
         with self.assertRaises(ToolError):
             auth.claim(self.path, auth.create.CLAIM_ACKNOWLEDGEMENT)
+
+    def test_old_schema_and_business_migration_scope_rejected_before_claim(self):
+        original = copy.deepcopy(self.doc)
+        for field, value in (
+            ("schemaVersion", 1),
+            (
+                "scope",
+                {
+                    k: v
+                    for k, v in self.doc["scope"].items()
+                    if k != "existingKindWorkloads"
+                },
+            ),
+            ("scope", self.doc["scope"] | {"businessWorkloads": 89}),
+        ):
+            self.doc = copy.deepcopy(original) | {field: value}
+            self.save()
+            with self.subTest(field=field), self.assertRaises(ToolError):
+                auth.validate(self.path, require_approved=False)
 
     def test_same_uid_pin_and_source_window_must_all_match(self):
         for field, value in (

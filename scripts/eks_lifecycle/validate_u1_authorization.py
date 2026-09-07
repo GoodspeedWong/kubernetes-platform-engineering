@@ -126,6 +126,7 @@ PREPARATION_EVIDENCE_KEYS = {
 
 KUBERNETES_MUTATION_SCOPE = (
     "protect and later restore exactly three reviewed shared XRs and 73 owned Objects",
+    "use eks-shared-crossplane-objects-only-v1 protection; never inventory, migrate, adopt, scale or reschedule existing KinD workloads",
     "create or replace, then scrub and delete crossplane-system/eks-platform-aws-session",
     "patch only the 14 reviewed controller Deployments for bounded startup and final zero-replica restore",
     "create exactly one reviewed XEKSEnvironment and allow its three stable owner child XRs",

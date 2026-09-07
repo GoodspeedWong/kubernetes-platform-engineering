@@ -117,6 +117,9 @@ class RealOperations(continuation_ops.RealOperations):
             raise ToolError("CIDR adapter permits only bounded non-secret GETs")
         return super()._kube(contract, *args, body=None)
 
+    def _harden(self, _contract, _mode):
+        raise ToolError("CIDR adapter cannot enter active shared-protection workflows")
+
     def actor(self):
         command = ["kubectl", "--context", auth.SCOPE["context"]]
         # These are non-persistent identity/authorization review API requests.

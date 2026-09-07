@@ -284,11 +284,9 @@ class RealOperations(base.RealOperations):
                 raise ToolError("continuation shared inventory drift")
             for name, saved in wanted.items():
                 verify_shared(by_name[name], saved)
-        if not identity.strict_equal(
-            base.u0_runner.hardening.workload_state(),
-            self.proof["business-workload-evidence"]["workloads"],
-        ):
-            raise ToolError("continuation business workload UID/replica/schedule drift")
+        # Existing KinD workloads have another owner. Their historical replicas,
+        # schedules and membership are not an EKS precondition or migration input.
+        # Active U1 uses run-scoped shared-object pause/intent protection instead.
 
     def _assert_managed(self, contract, reader):
         inventory = self.proof["managed-inventory-evidence"]

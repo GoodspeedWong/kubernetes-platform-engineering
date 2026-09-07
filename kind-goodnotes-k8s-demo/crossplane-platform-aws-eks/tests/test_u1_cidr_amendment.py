@@ -291,7 +291,7 @@ class AuthorizationAndExecutionTests(unittest.TestCase):
             "proof": {"core-readonly-evidence": {"controllers": []}},
         }
         self.doc = {
-            "schemaVersion": 1,
+            "schemaVersion": auth.SCHEMA_VERSION,
             "authorizationType": auth.TYPE,
             "bundle": self.directory.name,
             "windowId": "u1ip-20260907-01",
@@ -407,6 +407,31 @@ class AuthorizationAndExecutionTests(unittest.TestCase):
         self.save()
         with self.assertRaises(ToolError):
             auth.validate(self.path, require_approved=False)
+
+    def test_old_schema_or_business_scope_cannot_authorize_new_policy(self):
+        self.approve()
+        original = copy.deepcopy(self.doc)
+        for field, value in (
+            ("schemaVersion", 1),
+            (
+                "scope",
+                {
+                    k: v
+                    for k, v in self.doc["scope"].items()
+                    if k != "existingKindWorkloads"
+                },
+            ),
+            (
+                "scope",
+                self.doc["scope"]
+                | {"existingKindWorkloads": {"migrationAllowed": True}},
+            ),
+        ):
+            self.doc = copy.deepcopy(original) | {field: value}
+            self.save()
+            with self.subTest(field=field), self.assertRaises(ToolError):
+                auth.claim(self.path, auth.ACK, root=self.state)
+            self.assertFalse(self.state.exists())
 
     def test_binding_scope_and_strict_types_rejected(self):
         original = copy.deepcopy(self.doc)

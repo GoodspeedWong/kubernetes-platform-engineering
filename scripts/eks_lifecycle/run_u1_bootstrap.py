@@ -37,6 +37,7 @@ import renew_management_credentials as credentials
 import run_u0_management_preflight as u0_runner
 import validate_u1_authorization as authorization_tool
 import u1_spot_quota as spot_quota
+import u1_shared_protection as shared_protection
 
 RUN_ACKNOWLEDGEMENT = "I-APPROVE-EXECUTE-ONE-U1-BOOTSTRAP-CREATE-WINDOW"
 RECOVER_ACKNOWLEDGEMENT = "I-APPROVE-U1-PARK-RECOVERY-ONLY"
@@ -441,6 +442,28 @@ class RealOperations(u0_runner.RealOperations):
 
     def _verify_claim(self, contract: U1Contract) -> None:
         authorization_tool.verify_claim(contract.authorization_path)
+
+    def _harden(self, contract: U1Contract, mode: str) -> None:
+        # U1 never uses the legacy A05 whole-cluster workload snapshot policy.
+        if mode not in {"protect", "verify", "restore"}:
+            raise ToolError("U1 shared protection mode is not reviewed")
+        u0_runner._run_suppressed(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts/eks_lifecycle/u1_shared_protection.py"),
+                mode,
+                "--acknowledge",
+                shared_protection.ACK,
+                "--run-id",
+                contract.run_id,
+            ],
+            timeout=240,
+        )
+
+    def start_controllers(self, contract: U1Contract) -> None:
+        self._verify_claim(contract)
+        self._harden(contract, "verify")
+        super().start_controllers(contract)
 
     def _aws_json(
         self,
@@ -1329,6 +1352,7 @@ class RealOperations(u0_runner.RealOperations):
         checkpoint: dict[str, Any],
         audit_profile: str,
     ) -> dict[str, Any]:
+        self._harden(contract, "verify")
         inventory = self._managed_inventory(contract)
         aws = self.verify_spot_instances(contract, audit_profile)
         if checkpoint.get("checkpointReached"):

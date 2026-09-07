@@ -20,7 +20,7 @@ CHECKS = {
     "awsManagedResources": 0,
     "nonAwsObjects": 73,
     "sharedObjectsUnchanged": 76,
-    "businessWorkloadsUnchanged": 89,
+    "existingKindWorkloadsExcluded": True,
     "permanentDefinitionsUnchanged": 63,
     "sameCompositionPin": True,
 }

@@ -21,7 +21,9 @@ from pathlib import Path
 from common import EKS_ROOT, ToolError, load_yaml
 import u1_environment_identity as identity
 import validate_u1_authorization as create
+from u1_management_scope import EXISTING_WORKLOAD_BOUNDARY
 
+SCHEMA_VERSION = 2
 AUTHORIZATION_TYPE = "u1-existing-root-continuation"
 PENDING = "DRAFT_NOT_AUTHORIZED"
 APPROVED = "APPROVED_FOR_ONE_SAME_ROOT_CONTINUATION"
@@ -55,7 +57,7 @@ SCOPE = {
     },
     "controllers": 14,
     "sharedObjects": 76,
-    "businessWorkloads": 89,
+    "existingKindWorkloads": EXISTING_WORKLOAD_BOUNDARY,
     "maximumExecutionSeconds": 3000,
     "maximumSessionSeconds": 3600,
     "separateA05ReviewRequired": True,
@@ -183,7 +185,6 @@ def source_evidence(sources: dict) -> dict:
         "sameRootUidAndReviewedIntent": True,
         "lockedCompositionAndRevisionContent": True,
         "sharedObjectsUidAndProtectionRestored": 76,
-        "businessWorkloadStatesUnchanged": 89,
         "lifecycleXRs": 1,
         "childXRs": 0,
         "awsManagedResources": 0,
@@ -203,6 +204,8 @@ def source_evidence(sources: dict) -> dict:
         for k, v in required.items()
     ):
         raise ToolError("independent parked-baseline confirmation is incomplete")
+    # A legacy business-workload file remains checksum-bound as historical
+    # evidence only. Its contents/count never authorize or block a new EKS run.
     docs = proof["core-readonly-evidence"]["documents"]
     uid = result["environment"]["uid"]
     refs = identity.validate_root(docs["root"], env, expected_uid=uid)
@@ -296,7 +299,7 @@ def validate(
             "awsReadOnlySnapshot",
         }
         or type(doc["schemaVersion"]) is not int
-        or doc["schemaVersion"] != 1
+        or doc["schemaVersion"] != SCHEMA_VERSION
     ):
         raise ToolError("continuation schema differs")
     bundle = BUNDLE_RE.fullmatch(str(doc["bundle"]))

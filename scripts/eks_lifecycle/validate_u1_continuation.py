@@ -159,7 +159,7 @@ def source_evidence(sources: dict) -> dict:
     ):
         raise ToolError("archived create receipt/result binding differs")
     snapshot = create._load_json(archive / "aws-readonly-snapshot.json")
-    create._validate_snapshot(snapshot, allow_stale=True)
+    archived_spot_verified = create._validate_archived_snapshot(snapshot)
     create._validate_environment(archive, old["bundle"], snapshot)
     create._validate_cost_plan(
         create._load_json(archive / "cost-and-cleanup-plan.json")
@@ -225,6 +225,7 @@ def source_evidence(sources: dict) -> dict:
         "proof": proof,
         "environment": env,
         "snapshot": snapshot,
+        "archivedSpotQuotaVerified": archived_spot_verified,
         "rootUid": uid,
         "pin": pin,
         "sourceWindow": old["windowId"],
@@ -437,6 +438,7 @@ def public_plan(result: dict) -> dict:
         "approved": result["approved"],
         "blockers": result["blockers"],
         "sameRootBindingVerified": True,
+        "archivedSpotQuotaVerified": result["evidence"]["archivedSpotQuotaVerified"],
         "scope": doc["scope"],
         "oldClaimReusable": False,
         "localClaimCreated": False,

@@ -383,22 +383,7 @@ class RealOperations(base.RealOperations):
             raise ToolError(
                 "continuation zero-cloud starting baseline differs; no adoption allowed"
             )
-        quota = (
-            self._aws_json(
-                contract,
-                audit_profile,
-                "service-quotas",
-                "get-service-quota",
-                "--service-code",
-                "ec2",
-                "--quota-code",
-                "L-1216C47A",
-            )
-            or {}
-        )
-        value = quota.get("Quota", {}).get("Value")
-        if type(value) not in (int, float) or not 16 <= value < float("inf"):
-            raise ToolError("continuation Spot quota differs")
+        quota = self.verify_spot_quota(contract, audit_profile)
         images = (
             self._aws_json(
                 contract,
@@ -435,6 +420,8 @@ class RealOperations(base.RealOperations):
             "sharedObjects": 76,
             "awsManagedResources": 0,
             "targetConflicts": conflicts,
+            "spotQuotaAtLeastNodePoolLimit": True,
+            "spotQuota": quota,
             "hostEgressMatched": egress["host"] == contract.expected_host_public_ip,
             "kindEgressMatched": egress["kind"] == contract.expected_kind_public_ip,
             **release,

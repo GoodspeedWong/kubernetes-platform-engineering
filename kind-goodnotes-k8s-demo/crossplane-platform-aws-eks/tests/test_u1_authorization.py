@@ -35,7 +35,7 @@ CODE_STATE = {
 
 def snapshot(*, observed_at: datetime | None = None) -> dict:
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "observedAt": (observed_at or datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat(),
         "profile": "warlock-cli-codex-admin",
         "accountId": "123456789012",
@@ -59,7 +59,13 @@ def snapshot(*, observed_at: datetime | None = None) -> dict:
             "execution": True,
             "deployment": True,
         },
-        "spotQuota": {"quotaCode": "L-1216C47A", "value": 32.0},
+        "spotQuota": {
+            "serviceCode": "ec2",
+            "quotaCode": "L-34B43A08",
+            "quotaName": "All Standard (A, C, D, H, I, M, R, T, Z) Spot Instance Requests",
+            "usageClass": "Standard/Spot",
+            "value": 32.0,
+        },
         "nodeImage": {
             "imageId": "ami-0123456789abcdef0",
             "state": "available",
@@ -393,6 +399,33 @@ class U1AuthorizationTests(unittest.TestCase):
             path = self.write_bundle(authorization(), snapshot_document=item)
             with self.subTest(mode=mode), self.assertRaises(ToolError):
                 self.validate(path)
+
+    def test_active_create_rejects_legacy_and_spoofed_spot_before_claim(self) -> None:
+        cases = []
+        legacy = snapshot()
+        legacy["schemaVersion"] = 1
+        legacy["spotQuota"] = {"quotaCode": "L-1216C47A", "value": 32.0}
+        cases.append(legacy)
+        wrong = snapshot()
+        wrong["spotQuota"]["quotaCode"] = "L-1216C47A"
+        cases.append(wrong)
+        for candidate in cases:
+            path = self.write_bundle(
+                authorization(u1.APPROVED_STATUS), snapshot_document=candidate
+            )
+            with self.subTest(candidate=candidate["schemaVersion"]), self.assertRaises(
+                ToolError
+            ):
+                self.validate(path, approved=True)
+
+            with (
+                patch.object(u1, "execution_code_state", return_value=dict(CODE_STATE)),
+                self.assertRaises(ToolError),
+            ):
+                u1.claim_authorization(
+                    path, u1.CLAIM_ACKNOWLEDGEMENT, claim_root=self.claim_root
+                )
+            self.assertFalse(self.claim_root.exists())
 
     def test_snapshot_requires_ipv4_exact_roles_and_finite_quota(self) -> None:
         cases = []

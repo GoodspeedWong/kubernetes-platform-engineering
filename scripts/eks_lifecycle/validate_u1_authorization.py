@@ -7,7 +7,6 @@ import argparse
 import hashlib
 import ipaddress
 import json
-import math
 import os
 import re
 import sys
@@ -16,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from common import ToolError, find_placeholders, load_yaml
+import u1_spot_quota as spot_quota
 import validate_u0_authorization as u0_authorization
 
 
@@ -27,6 +27,7 @@ MAX_SESSION_SECONDS = 3600
 MAX_EXECUTION_SECONDS = 3000
 APPROVAL_MAX_AGE_SECONDS = 86400
 SNAPSHOT_MAX_AGE_SECONDS = 86400
+SNAPSHOT_SCHEMA_VERSION = 2
 CLAIM_SCHEMA_VERSION = 1
 CLAIM_STATUS = "CLAIMED_FOR_U1_BOOTSTRAP_CREATE"
 CLAIM_ACKNOWLEDGEMENT = "I-CLAIM-ONE-U1-BOOTSTRAP-CREATE-WINDOW"
@@ -477,6 +478,40 @@ def _validate_environment(directory: Path, bundle: str, snapshot: dict[str, Any]
 
 
 def _validate_snapshot(document: dict[str, Any], *, allow_stale: bool) -> datetime:
+    """Active evidence always requires v2 and verified Standard Spot identity."""
+    observed_at = _validate_snapshot_structure(
+        document, allow_stale=allow_stale, schema_version=SNAPSHOT_SCHEMA_VERSION
+    )
+    spot_quota.validate_snapshot(document.get("spotQuota"))
+    return observed_at
+
+
+def _validate_archived_snapshot(document: dict[str, Any]) -> bool:
+    """Historical identity evidence only, after archive/claim/result hash checks.
+
+    Legacy v1 recorded On-Demand as Spot. Preserve those bytes without treating
+    them as Spot proof. This reader is never used for the active snapshot slot.
+    """
+    if not isinstance(document, dict):
+        raise ToolError("historical U1 snapshot must be an object")
+    if document.get("schemaVersion") == SNAPSHOT_SCHEMA_VERSION:
+        _validate_snapshot(document, allow_stale=True)
+        return True
+    _validate_snapshot_structure(document, allow_stale=True, schema_version=1)
+    quota = document.get("spotQuota")
+    if (
+        not isinstance(quota, dict)
+        or set(quota) != {"quotaCode", "value"}
+        or quota.get("quotaCode") != "L-1216C47A"
+    ):
+        raise ToolError("historical U1 v1 quota record differs")
+    spot_quota.validate_value(quota["value"])
+    return False
+
+
+def _validate_snapshot_structure(
+    document: dict[str, Any], *, allow_stale: bool, schema_version: int
+) -> datetime:
     expected_keys = {
         "schemaVersion",
         "observedAt",
@@ -497,7 +532,12 @@ def _validate_snapshot(document: dict[str, Any], *, allow_stale: bool) -> dateti
         "awsMutation",
         "kubernetesMutation",
     }
-    if set(document) != expected_keys or document.get("schemaVersion") != 1:
+    if (
+        not isinstance(document, dict)
+        or set(document) != expected_keys
+        or type(document.get("schemaVersion")) is not int
+        or document["schemaVersion"] != schema_version
+    ):
         raise ToolError("U1 AWS snapshot schema differs")
     observed_at = _timestamp(document.get("observedAt"), "snapshot observedAt")
     if (
@@ -533,16 +573,6 @@ def _validate_snapshot(document: dict[str, Any], *, allow_stale: bool) -> dateti
         or document.get("kubernetesMutation") is not False
     ):
         raise ToolError("U1 AWS snapshot does not prove the reviewed zero-conflict baseline")
-    quota = document.get("spotQuota")
-    if (
-        not isinstance(quota, dict)
-        or quota.get("quotaCode") != "L-1216C47A"
-        or isinstance(quota.get("value"), bool)
-        or not isinstance(quota.get("value"), (int, float))
-        or not math.isfinite(float(quota["value"]))
-        or quota["value"] < 16
-    ):
-        raise ToolError("U1 Spot vCPU quota is below the reviewed NodePool limit")
     image = document.get("nodeImage")
     if (
         not isinstance(image, dict)

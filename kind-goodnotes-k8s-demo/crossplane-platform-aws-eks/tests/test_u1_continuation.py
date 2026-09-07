@@ -51,6 +51,7 @@ class ContinuationAuthorizationTests(unittest.TestCase):
             "pin": PIN,
             "sourceWindow": "u1b-20260905-01",
             "archive": Path("old-archive"),
+            "archivedSpotQuotaVerified": False,
         }
         self.doc = {
             "schemaVersion": 1,
@@ -121,6 +122,7 @@ class ContinuationAuthorizationTests(unittest.TestCase):
         self.assertFalse(plan["oldClaimReusable"])
         self.assertFalse(plan["awsApiCalls"])
         self.assertFalse(plan["kubernetesApiCalls"])
+        self.assertFalse(plan["archivedSpotQuotaVerified"])
         self.assertEqual(2, len(plan["blockers"]))
         claim.assert_not_called()
 
@@ -195,6 +197,36 @@ class ContinuationAuthorizationTests(unittest.TestCase):
         self.save()
         with self.assertRaises(ToolError):
             auth.validate(self.path, require_approved=False)
+
+    def test_legacy_snapshot_never_authorizes_continuation_or_claim(self):
+        self.approve()
+        self.doc["awsReadOnlySnapshot"]["schemaVersion"] = 1
+        self.doc["awsReadOnlySnapshot"]["spotQuota"] = {
+            "quotaCode": "L-1216C47A",
+            "value": 32.0,
+        }
+        self.save()
+        root = Path(self.tmp.name) / "legacy-rejected-claims"
+        for recovery_only in (False, True):
+            with (
+                self.subTest(recovery_only=recovery_only),
+                self.assertRaises(ToolError),
+            ):
+                auth.validate(
+                    self.path, require_approved=True, recovery_only=recovery_only
+                )
+        with self.assertRaises(ToolError):
+            auth.claim(self.path, auth.CLAIM_ACKNOWLEDGEMENT, root=root)
+        self.assertFalse(root.exists())
+
+    def test_wrong_quota_identity_never_authorizes_continuation_claim(self):
+        self.approve()
+        self.doc["awsReadOnlySnapshot"]["spotQuota"]["usageClass"] = "Standard/OnDemand"
+        self.save()
+        root = Path(self.tmp.name) / "wrong-quota-claims"
+        with self.assertRaises(ToolError):
+            auth.claim(self.path, auth.CLAIM_ACKNOWLEDGEMENT, root=root)
+        self.assertFalse(root.exists())
 
     def test_stale_snapshot_or_release_drift_rejected(self):
         self.approve()

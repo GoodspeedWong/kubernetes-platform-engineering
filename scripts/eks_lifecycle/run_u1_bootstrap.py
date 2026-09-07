@@ -36,6 +36,7 @@ import u1_environment_identity as environment_identity
 import renew_management_credentials as credentials
 import run_u0_management_preflight as u0_runner
 import validate_u1_authorization as authorization_tool
+import u1_spot_quota as spot_quota
 
 RUN_ACKNOWLEDGEMENT = "I-APPROVE-EXECUTE-ONE-U1-BOOTSTRAP-CREATE-WINDOW"
 RECOVER_ACKNOWLEDGEMENT = "I-APPROVE-U1-PARK-RECOVERY-ONLY"
@@ -853,6 +854,19 @@ class RealOperations(u0_runner.RealOperations):
             raise ToolError("U1 non-AWS managed baseline differs")
         self._baseline_non_aws_identities = identities
 
+    def verify_spot_quota(self, contract: U1Contract, audit_profile: str) -> dict:
+        response = self._aws_json(
+            contract,
+            audit_profile,
+            "service-quotas",
+            "get-service-quota",
+            "--service-code",
+            spot_quota.SERVICE_CODE,
+            "--quota-code",
+            spot_quota.QUOTA_CODE,
+        )
+        return spot_quota.from_aws_response(response)
+
     def baseline(self, contract: U1Contract, audit_profile: str) -> dict[str, Any]:
         self._assert_stopped(contract, allow_tagged_functions=False)
         if credentials.session_metadata(contract.bootstrap.context) is not None:
@@ -874,19 +888,7 @@ class RealOperations(u0_runner.RealOperations):
         conflicts = self.aws_conflicts(contract, audit_profile)
         if set(conflicts) != authorization_tool.TARGET_CONFLICT_KEYS or any(conflicts.values()):
             raise ToolError("U1 target environment already has conflicting AWS resources")
-        quota = self._aws_json(
-            contract,
-            audit_profile,
-            "service-quotas",
-            "get-service-quota",
-            "--service-code",
-            "ec2",
-            "--quota-code",
-            "L-1216C47A",
-        ) or {}
-        value = quota.get("Quota", {}).get("Value")
-        if not isinstance(value, (int, float)) or value < 16:
-            raise ToolError("U1 Spot vCPU quota fell below the reviewed limit")
+        quota = self.verify_spot_quota(contract, audit_profile)
         images = self._aws_json(
             contract,
             audit_profile,
@@ -914,6 +916,7 @@ class RealOperations(u0_runner.RealOperations):
             "kindEgressMatched": egress["kind"] == contract.expected_kind_public_ip,
             "accountMatched": True,
             "spotQuotaAtLeastNodePoolLimit": True,
+            "spotQuota": quota,
             "nodeImageAvailable": True,
             **release,
         }

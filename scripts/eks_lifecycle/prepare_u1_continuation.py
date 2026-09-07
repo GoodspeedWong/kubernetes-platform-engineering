@@ -82,6 +82,7 @@ def prepare(destination: Path, sources: dict) -> dict:
 - execution aggregate：`{code['aggregateSha256']}`；非 Markdown 文件 {code['trackedNonMarkdownFiles']}。
 - 绑定既有 root UID：`{evidence['rootUid']}`。
 - 原 create 窗口：`{evidence['sourceWindow']}`；旧 `RECOVERY_REQUIRED`、claim、journal 均原样保留。
+- 原包是否证明 Standard Spot 配额：`{evidence['archivedSpotQuotaVerified']}`；v1 的 On-Demand 记录不算 Spot 证据。
 - Composition：`{evidence['pin'].composition_name}` / UID `{evidence['pin'].composition_uid}`。
 - Revision：`{evidence['pin'].revision_name}` / UID `{evidence['pin'].revision_uid}`。
 - 内容 SHA-256：`{evidence['pin'].spec_sha256}`。
@@ -106,7 +107,8 @@ AWS 14 类目标库存必须重新证明为零，不自动接管部分已创建�
 
 ## 仍需完成，不能用本包绕过
 
-1. 单独批准并获取新的只读 AWS/release/CoreDNS/AMI/Spot quota/IAM/双出口快照。
+1. 单独批准并获取新的 schema v2 AWS/release/CoreDNS/AMI/Spot quota/IAM/双出口快照。
+   spotQuota 必须包含 serviceCode、quotaCode、quotaName、usageClass、value，并通过 Standard Spot 校验。
 2. 出口必须仍匹配既有 root 的审核 CIDR；漂移需另审 intent 变更，不能在本轮偷偷改 root。
 3. 核对独立 A05 review；真正开启前仍需完整 IAM 审计。此处只有历史 review 的文件绑定。
 4. 将完整新证据放入**新包**，绑定最终代码/全部摘要，由唯一维护审核人独立批准 active 窗口。

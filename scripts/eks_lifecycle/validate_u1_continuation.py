@@ -103,7 +103,8 @@ def reference(ref: dict) -> Path:
 
 def source_evidence(sources: dict) -> dict:
     """Verify archived bytes and derive identity from full documents, not labels."""
-    if set(sources) != {
+    original_sources = {k: v for k, v in sources.items() if k != "cidrAmendment"}
+    if set(original_sources) != {
         "createBundle",
         "createClaim",
         "createResult",
@@ -220,7 +221,7 @@ def source_evidence(sources: dict) -> dict:
     definitions = verify_local(
         archive, proof["permanent-definitions-evidence"]["documents"]
     )
-    return {
+    evidence = {
         "archive": archive,
         "proof": proof,
         "environment": env,
@@ -230,6 +231,21 @@ def source_evidence(sources: dict) -> dict:
         "pin": pin,
         "sourceWindow": old["windowId"],
         "definitions": definitions,
+    }
+    return amended_evidence(evidence, sources, original_sources)
+
+
+def amended_evidence(evidence: dict, sources: dict, original_sources: dict) -> dict:
+    """Add one verified amendment without modifying the archived intent/evidence."""
+    if "cidrAmendment" not in sources:
+        return evidence
+    from validate_u1_cidr_authorization import verify_receipt
+
+    return evidence | {
+        "environment": verify_receipt(
+            sources["cidrAmendment"], original_sources, evidence
+        ),
+        "cidrAmendmentVerified": True,
     }
 
 
@@ -318,9 +334,17 @@ def validate(
         create._validate_snapshot(
             snapshot, allow_stale=recovery_only or not require_approved
         )
-        create._validate_environment(
-            evidence["archive"], evidence["archive"].name, snapshot
-        )
+        if evidence.get("cidrAmendmentVerified") is True:
+            create._validate_environment_document(
+                evidence["archive"],
+                evidence["archive"].name,
+                snapshot,
+                evidence["environment"],
+            )
+        else:
+            create._validate_environment(
+                evidence["archive"], evidence["archive"].name, snapshot
+            )
     approved = doc["reviewStatus"] == APPROVED
     if doc["reviewStatus"] == PENDING:
         if doc["approvedBy"] is not None or doc["approvedAt"] is not None:
@@ -439,6 +463,7 @@ def public_plan(result: dict) -> dict:
         "blockers": result["blockers"],
         "sameRootBindingVerified": True,
         "archivedSpotQuotaVerified": result["evidence"]["archivedSpotQuotaVerified"],
+        "cidrAmendmentVerified": result["evidence"].get("cidrAmendmentVerified", False),
         "scope": doc["scope"],
         "oldClaimReusable": False,
         "localClaimCreated": False,

@@ -311,6 +311,13 @@ def _validate_platform_release(document: Any) -> str:
 
 def _validate_environment(directory: Path, bundle: str, snapshot: dict[str, Any]) -> dict[str, Any]:
     document = load_yaml(directory / "environment.approved.yaml")
+    return _validate_environment_document(directory, bundle, snapshot, document)
+
+
+def _validate_environment_document(
+    directory: Path, bundle: str, snapshot: dict[str, Any], document: dict[str, Any]
+) -> dict[str, Any]:
+    """Validate in-memory intent; callers must independently prove any amendment."""
     if not isinstance(document, dict) or set(document) != {
         "apiVersion",
         "kind",

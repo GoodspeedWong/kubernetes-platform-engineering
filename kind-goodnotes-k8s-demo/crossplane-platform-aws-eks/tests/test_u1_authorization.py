@@ -368,6 +368,27 @@ class U1AuthorizationTests(unittest.TestCase):
         with self.assertRaisesRegex(ToolError, "public endpoint CIDR"):
             self.validate(path)
 
+    def test_in_memory_amended_intent_still_requires_matching_snapshot_and_catalog(
+        self,
+    ):
+        self.write_bundle(authorization())
+        document = u1.load_yaml(self.directory / "environment.approved.yaml")
+        document["spec"]["parameters"]["access"]["publicAccessCidrs"] = ["8.8.8.8/32"]
+        fresh = snapshot()
+        with self.assertRaises(ToolError):
+            u1._validate_environment_document(
+                self.directory, self.directory.name, fresh, document
+            )
+        fresh.update(hostPublicEgressIp="8.8.8.8", kindPublicEgressIp="8.8.8.8")
+        u1._validate_environment_document(
+            self.directory, self.directory.name, fresh, document
+        )
+        fresh["nodeImage"]["imageId"] = "ami-11111111111111111"
+        with self.assertRaises(ToolError):
+            u1._validate_environment_document(
+                self.directory, self.directory.name, fresh, document
+            )
+
     def test_distinct_host_and_kind_egress_require_two_exact_slash32s(self) -> None:
         snapshot_document = snapshot()
         snapshot_document["kindPublicEgressIp"] = "203.0.113.12"

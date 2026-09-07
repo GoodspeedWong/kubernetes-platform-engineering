@@ -326,6 +326,46 @@ class ContinuationAuthorizationTests(unittest.TestCase):
         with self.assertRaises(ToolError):
             prepare.prepare(self.directory, self.sources)
 
+    def test_verified_amendment_uses_effective_intent_for_fresh_snapshot(self):
+        self.evidence.update(
+            cidrAmendmentVerified=True, environment={"test": "amended intent"}
+        )
+        self.approve()
+        with patch.object(auth.create, "_validate_environment_document") as check:
+            result = auth.validate(self.path, require_approved=True)
+        check.assert_called_once_with(
+            self.evidence["archive"],
+            self.evidence["archive"].name,
+            self.doc["awsReadOnlySnapshot"],
+            self.evidence["environment"],
+        )
+        self.assertTrue(auth.public_plan(result)["cidrAmendmentVerified"])
+
+    def test_effective_intent_is_passed_to_observe_only_runtime(self):
+        self.approve()
+        self.evidence.update(
+            cidrAmendmentVerified=True, environment={"test": "amended intent"}
+        )
+        reviewed = {
+            "document": self.doc,
+            "sources": self.sources,
+            "evidence": self.evidence,
+            "approved": True,
+        }
+        with (
+            patch.object(auth.create, "_load_json", return_value={}),
+            patch.object(
+                runner.base.u0_runner, "controller_inventory", return_value=[]
+            ),
+        ):
+            runtime = runner.runtime_contract(self.path, reviewed)
+        self.assertEqual(self.evidence["environment"], runtime.environment_document)
+        self.assertEqual(self.evidence["archive"], runtime.bundle_directory)
+        self.assertEqual(
+            "observe-only; never create/apply/replace/patch/delete root",
+            auth.SCOPE["rootOperation"],
+        )
+
 
 class ContinuationFakeOperations(FakeOperations):
     def observe_root(self, _contract):

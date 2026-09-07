@@ -636,6 +636,244 @@ class ContinuationAdapterTests(unittest.TestCase):
         self.assertEqual(unknown, definitions.with_server_defaults(unknown))
 
 
+class RevisionImagePinTests(unittest.TestCase):
+    def setUp(self):
+        # Saved runtime evidence has Parent.spec.package but Revision.spec.image
+        # (neither spec.package nor spec.source). All identities here are synthetic.
+        self.saved = []
+        self.documents = {}
+        for kind in ("Provider", "Function"):
+            name = "test-" + kind.lower()
+            revision_name = name + "-revision"
+            image = "registry.example.test/" + name + "@sha256:" + "a" * 64
+            saved = {
+                "kind": kind,
+                "name": name,
+                "uid": name + "-uid",
+                "package": image,
+                "revision": revision_name,
+                "revisionUid": revision_name + "-uid",
+                "deploymentUid": name + "-deployment-uid",
+            }
+
+            def owner(owner_kind, owner_name, owner_uid):
+                return [
+                    {
+                        "apiVersion": "pkg.crossplane.io/v1",
+                        "kind": owner_kind,
+                        "name": owner_name,
+                        "uid": owner_uid,
+                        "controller": True,
+                    }
+                ]
+
+            package = {
+                "apiVersion": "pkg.crossplane.io/v1",
+                "kind": kind,
+                "metadata": {"name": name, "uid": saved["uid"]},
+                "spec": {"package": image},
+                "status": {"currentRevision": revision_name},
+            }
+            revision = {
+                "apiVersion": "pkg.crossplane.io/v1",
+                "kind": kind + "Revision",
+                "metadata": {
+                    "name": revision_name,
+                    "uid": saved["revisionUid"],
+                    "ownerReferences": owner(kind, name, saved["uid"]),
+                },
+                "spec": {
+                    "desiredState": "Active",
+                    "image": image,
+                    "ignoreCrossplaneConstraints": False,
+                    "packagePullPolicy": "IfNotPresent",
+                    "revision": 1,
+                    "runtimeConfigRef": {"name": "test-runtime"},
+                    "skipDependencyResolution": False,
+                    "tlsServerSecretName": "test-server-tls",
+                },
+            }
+            if kind == "Provider":
+                revision["spec"]["tlsClientSecretName"] = "test-client-tls"
+            deployment = {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "metadata": {
+                    "name": revision_name,
+                    "uid": saved["deploymentUid"],
+                    "ownerReferences": owner(
+                        kind + "Revision", revision_name, saved["revisionUid"]
+                    ),
+                },
+                "spec": {
+                    "replicas": 0,
+                    "template": {"spec": {"serviceAccountName": revision_name}},
+                },
+            }
+            self.saved.append(saved)
+            self.documents[("get", kind.lower() + ".pkg.crossplane.io", name)] = package
+            self.documents[
+                ("get", kind.lower() + "revision.pkg.crossplane.io", revision_name)
+            ] = revision
+            self.documents[
+                (
+                    "--namespace",
+                    runner.base.NAMESPACE,
+                    "get",
+                    "deployment",
+                    revision_name,
+                )
+            ] = deployment
+        self.documents[("get", "clusterrole", "crossplane")] = {
+            "metadata": {"uid": "core-uid"},
+            "rules": [],
+        }
+        self.ops = operations.RealOperations(
+            {
+                "evidence": {
+                    "pin": PIN,
+                    "definitions": {},
+                    "proof": {
+                        "core-readonly-evidence": {"controllers": []},
+                        "permanent-definitions-evidence": {"documents": []},
+                        "runtime-and-final-checks": {
+                            "coreRbac": {
+                                "uid": "core-uid",
+                                "rulesSha256": identity.spec_digest([]),
+                            },
+                            "packageRuntimePins": self.saved,
+                            "generatedCrdBindings": [],
+                        },
+                    },
+                }
+            }
+        )
+        for patcher in (
+            patch.object(
+                runner.base.subprocess,
+                "run",
+                side_effect=AssertionError("offline test attempted a command/API"),
+            ),
+            patch.object(
+                runner.base.u0_runner.provider_rbac, "inventory", return_value={}
+            ),
+            patch.object(runner.base.u0_runner.provider_rbac, "audit"),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        patcher = patch.object(self.ops, "_kube", side_effect=self.get_document)
+        self.kube = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def get_document(self, _contract, *args):
+        if args not in self.documents:
+            raise AssertionError("unexpected offline Kubernetes request shape")
+        return copy.deepcopy(self.documents[args])
+
+    def resource_keys(self, saved):
+        return (
+            ("get", saved["kind"].lower() + ".pkg.crossplane.io", saved["name"]),
+            (
+                "get",
+                saved["kind"].lower() + "revision.pkg.crossplane.io",
+                saved["revision"],
+            ),
+            (
+                "--namespace",
+                runner.base.NAMESPACE,
+                "get",
+                "deployment",
+                saved["revision"],
+            ),
+        )
+
+    def test_provider_and_function_image_only_revisions_pass_full_runtime_chain(self):
+        before = copy.deepcopy(self.documents)
+        self.ops._assert_permanent(contract())
+        self.assertEqual(before, self.documents)
+        self.assertEqual(7, self.kube.call_count)
+        for saved in self.saved:
+            _, revision_key, _ = self.resource_keys(saved)
+            spec = self.documents[revision_key]["spec"]
+            self.assertNotIn("package", spec)
+            self.assertNotIn("source", spec)
+            self.assertEqual(saved["package"], spec["image"])
+
+    def test_image_must_match_exact_digest_no_package_or_source_fallback(self):
+        before = copy.deepcopy(self.documents)
+        for saved in self.saved:
+            _, revision_key, _ = self.resource_keys(saved)
+            for change in (
+                "missing",
+                "wrong-digest",
+                "tag",
+                "package",
+                "source",
+                "null",
+                "bool",
+            ):
+                self.documents = copy.deepcopy(before)
+                spec = self.documents[revision_key]["spec"]
+                spec.pop("image")
+                if change in ("package", "source"):
+                    spec[change] = saved["package"]
+                elif change != "missing":
+                    spec["image"] = {
+                        "wrong-digest": saved["package"].replace("a" * 64, "b" * 64),
+                        "tag": saved["package"].split("@")[0] + ":v1.0.0",
+                        "null": None,
+                        "bool": True,
+                    }[change]
+                with (
+                    self.subTest(kind=saved["kind"], change=change),
+                    self.assertRaisesRegex(
+                        ToolError, "package/runtime owner chain drift"
+                    ),
+                ):
+                    self.ops._assert_permanent(contract())
+
+    def test_parent_revision_and_deployment_identity_gates_remain_enforced(self):
+        before = copy.deepcopy(self.documents)
+        changes = (
+            (0, lambda x: x["metadata"].update(uid="other")),
+            (0, lambda x: x["spec"].update(package="different")),
+            (0, lambda x: x["status"].update(currentRevision="other")),
+            (1, lambda x: x["metadata"].update(uid="other")),
+            (1, lambda x: x["spec"].update(desiredState="Inactive")),
+            (1, lambda x: x["metadata"]["ownerReferences"][0].update(uid="other")),
+            (1, lambda x: x["metadata"]["ownerReferences"][0].update(controller=1)),
+            (
+                1,
+                lambda x: x["metadata"]["ownerReferences"][0].update(
+                    apiVersion="wrong/v1"
+                ),
+            ),
+            (1, lambda x: x["metadata"]["ownerReferences"].append({})),
+            (2, lambda x: x["metadata"].update(uid="other")),
+            (
+                2,
+                lambda x: x["spec"]["template"]["spec"].update(
+                    serviceAccountName="other"
+                ),
+            ),
+            (2, lambda x: x["metadata"]["ownerReferences"][0].update(uid="other")),
+            (2, lambda x: x["metadata"]["ownerReferences"][0].update(kind="wrong")),
+            (2, lambda x: x["metadata"].update(ownerReferences=[])),
+        )
+        for saved in self.saved:
+            keys = self.resource_keys(saved)
+            for index, (resource, mutate) in enumerate(changes):
+                self.documents = copy.deepcopy(before)
+                mutate(self.documents[keys[resource]])
+                with (
+                    self.subTest(kind=saved["kind"], index=index),
+                    self.assertRaisesRegex(
+                        ToolError, "package/runtime owner chain drift"
+                    ),
+                ):
+                    self.ops._assert_permanent(contract())
+
+
 class MetadataTransportTests(unittest.TestCase):
     def request(self, document, *, status=200, many=False, optional=False):
         client = metadata.ReadOnlyMetadata("kind-kube-nebula-a")

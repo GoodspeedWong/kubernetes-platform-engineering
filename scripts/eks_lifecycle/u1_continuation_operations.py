@@ -227,7 +227,7 @@ class RealOperations(base.RealOperations):
                 or package.get("spec", {}).get("package") != saved["package"]
                 or package.get("status", {}).get("currentRevision") != saved["revision"]
                 or revision["metadata"]["uid"] != saved["revisionUid"]
-                or revision.get("spec", {}).get("package") != saved["package"]
+                or revision.get("spec", {}).get("image") != saved["package"]
                 or revision.get("spec", {}).get("desiredState") != "Active"
                 or deployment["metadata"]["uid"] != saved["deploymentUid"]
                 or deployment["spec"]["template"]["spec"].get("serviceAccountName")

@@ -178,14 +178,7 @@ def validate(path, *, require_approved, historical=False):
             raise ToolError("CIDR candidate does not match both reviewed egress paths")
         actor = doc["actor"]
         if (
-            not isinstance(actor, dict)
-            or set(actor) != {"username", "groups"}
-            or not isinstance(actor["username"], str)
-            or not actor["username"].strip()
-            or not isinstance(actor["groups"], list)
-            or not actor["groups"]
-            or any(not isinstance(g, str) or not g.strip() for g in actor["groups"])
-            or actor["groups"] != sorted(set(actor["groups"]))
+            not identity.strict_equal(actor, amendment.actor_identity(actor))
             or doc["exclusiveMaintenanceAcknowledged"] is not True
             or not isinstance(doc["approvedBy"], str)
             or not doc["approvedBy"].strip()

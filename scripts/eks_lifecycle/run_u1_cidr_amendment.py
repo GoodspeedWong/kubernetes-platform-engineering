@@ -121,10 +121,7 @@ class RealOperations(continuation_ops.RealOperations):
         command = ["kubectl", "--context", auth.SCOPE["context"]]
         # These are non-persistent identity/authorization review API requests.
         result = json.loads(base._run_text(command + ["auth", "whoami", "-o", "json"]))
-        info = result["status"]["userInfo"]
-        if set(info) - {"username", "groups"}:
-            raise ToolError("unreviewed actor UID/extra attributes")
-        actor = {"username": info["username"], "groups": sorted(info["groups"])}
+        actor = amendment.actor_identity(result["status"]["userInfo"])
         if not identity.strict_equal(actor, self.reviewed["document"]["actor"]):
             raise ToolError("CIDR effective actor changed")
         for verb in ("get", "patch"):

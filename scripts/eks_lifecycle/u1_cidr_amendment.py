@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import ipaddress
+import re
 from dataclasses import asdict
 
 from common import ToolError
@@ -23,6 +24,46 @@ CHECKS = {
     "permanentDefinitionsUnchanged": 63,
     "sameCompositionPin": True,
 }
+
+
+def actor_identity(value):
+    """Preserve the exact supported UserInfo; canonicalize only group order.
+
+    An absent extra field remains absent for identities without it. A certificate
+    credential ID, when present, must be bound in full by review and receipts;
+    it is never removed to match an older review. Unknown identity attributes
+    require separate support/review instead of being silently discarded.
+    """
+    if (
+        not isinstance(value, dict)
+        or set(value) not in ({"username", "groups"}, {"username", "groups", "extra"})
+        or not isinstance(value["username"], str)
+        or not value["username"].strip()
+        or not isinstance(value["groups"], list)
+        or not value["groups"]
+        or any(not isinstance(g, str) or not g.strip() for g in value["groups"])
+        or len(value["groups"]) != len(set(value["groups"]))
+    ):
+        raise ToolError(
+            "CIDR actor contains unsupported or malformed identity attributes"
+        )
+    if "extra" in value:
+        extra = value["extra"]
+        field = "authentication.kubernetes.io/credential-id"
+        if (
+            not isinstance(extra, dict)
+            or set(extra) != {field}
+            or not isinstance(extra[field], list)
+            or len(extra[field]) != 1
+            or not isinstance(extra[field][0], str)
+            or re.fullmatch(r"X509SHA256=[0-9a-f]{64}", extra[field][0]) is None
+        ):
+            raise ToolError(
+                "CIDR actor contains unsupported or malformed credential ID"
+            )
+    actor = copy.deepcopy(value)
+    actor["groups"] = sorted(actor["groups"])
+    return actor
 
 
 def cidrs(value):

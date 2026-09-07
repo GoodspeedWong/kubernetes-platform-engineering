@@ -25,6 +25,80 @@ from test_u1_authorization import CODE_STATE, environment, snapshot
 from test_u1_continuation import PIN
 
 
+def certificate_actor():
+    # Shape of the saved UserInfo evidence; identity and fingerprint are synthetic.
+    return {
+        "username": "test-owner",
+        "groups": ["kubeadm:cluster-admins", "system:authenticated"],
+        "extra": {
+            "authentication.kubernetes.io/credential-id": ["X509SHA256=" + "a" * 64]
+        },
+    }
+
+
+class ActorIdentityTests(unittest.TestCase):
+    def test_certificate_identity_is_preserved_with_only_group_order_normalized(self):
+        value = certificate_actor()
+        value["groups"].reverse()
+        original = copy.deepcopy(value)
+        actor = amendment.actor_identity(value)
+        self.assertEqual(certificate_actor(), actor)
+        self.assertEqual(original, value)
+        actor["extra"]["authentication.kubernetes.io/credential-id"].clear()
+        self.assertEqual(original, value)
+
+    def test_no_extra_identity_stays_distinct_from_certificate_identity(self):
+        value = certificate_actor()
+        value.pop("extra")
+        self.assertEqual(value, amendment.actor_identity(value))
+        self.assertNotIn("extra", amendment.actor_identity(value))
+
+    def test_unknown_attributes_and_malformed_identity_fail_closed(self):
+        valid = certificate_actor()
+        invalid = [
+            None,
+            [],
+            {},
+            valid | {"uid": "unreviewed"},
+            valid | {"unknown": "attribute"},
+            valid | {"username": " "},
+            valid | {"username": True},
+            {k: v for k, v in valid.items() if k != "groups"},
+        ]
+        invalid += [
+            valid | {"groups": groups}
+            for groups in (None, "admins", [], [True], [" "], ["admin", "admin"])
+        ]
+        invalid += [
+            valid | {"extra": extra}
+            for extra in (
+                None,
+                {},
+                [],
+                {"unknown": ["value"]},
+                valid["extra"] | {"unknown": ["value"]},
+            )
+        ]
+        invalid += [
+            valid | {"extra": {"authentication.kubernetes.io/credential-id": ids}}
+            for ids in (
+                None,
+                "X509SHA256=" + "a" * 64,
+                [],
+                [True],
+                [""],
+                ["X509SHA256=" + "a" * 63],
+                ["X509SHA256=" + "A" * 64],
+                ["X509SHA256=" + "a" * 64 + "\n"],
+                ["other=" + "a" * 64],
+                ["X509SHA256=" + "a" * 64] * 2,
+            )
+        ]
+        for index, value in enumerate(invalid):
+            with self.subTest(index=index), self.assertRaises(ToolError):
+                amendment.actor_identity(value)
+
+
 def intent_fixture():
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "environment.yaml"
@@ -697,6 +771,132 @@ class AuthorizationAndExecutionTests(unittest.TestCase):
                 self.assertRaises(ToolError),
             ):
                 ops.actor()
+
+    def test_approved_certificate_identity_requires_canonical_full_attributes(self):
+        self.approve()
+        self.doc["actor"] = certificate_actor()
+        self.save()
+        self.assertEqual(certificate_actor(), self.reviewed()["document"]["actor"])
+        for mutate in (
+            lambda x: x["groups"].reverse(),
+            lambda x: x.update(uid="unexpected"),
+            lambda x: x["extra"].update(unknown=["value"]),
+            lambda x: x.update(extra={}),
+        ):
+            self.doc["actor"] = certificate_actor()
+            mutate(self.doc["actor"])
+            self.save()
+            with self.assertRaises(ToolError):
+                self.reviewed()
+
+    def test_live_certificate_actor_matches_review_and_requires_both_permissions(self):
+        self.approve()
+        self.doc["actor"] = certificate_actor()
+        self.save()
+        ops = runner.RealOperations(self.reviewed())
+        info = certificate_actor()
+        info["groups"].reverse()
+        response = json.dumps({"status": {"userInfo": info}})
+        with patch.object(
+            runner.base, "_run_text", side_effect=[response, "yes", "yes"]
+        ) as command:
+            self.assertEqual(certificate_actor(), ops.actor())
+            for verb, call in zip(("get", "patch"), command.call_args_list[1:]):
+                self.assertEqual(
+                    ["auth", "can-i", verb, runner.RESOURCE + "/eks-dev-spot"],
+                    call.args[0][3:],
+                )
+        with (
+            patch.object(runner.base, "_run_text", side_effect=[response, "yes", "no"]),
+            self.assertRaises(ToolError),
+        ):
+            ops.actor()
+
+    def test_live_certificate_drift_is_rejected_before_permission_probes(self):
+        self.approve()
+        self.doc["actor"] = certificate_actor()
+        self.save()
+        ops = runner.RealOperations(self.reviewed())
+        for mutate in (
+            lambda x: x.pop("extra"),
+            lambda x: x["extra"].update(
+                {
+                    "authentication.kubernetes.io/credential-id": [
+                        "X509SHA256=" + "b" * 64
+                    ]
+                }
+            ),
+            lambda x: x.update(uid="unexpected"),
+            lambda x: x["extra"].update(unknown=["value"]),
+            lambda x: x["groups"].append(x["groups"][0]),
+        ):
+            info = certificate_actor()
+            mutate(info)
+            with (
+                patch.object(
+                    runner.base,
+                    "_run_text",
+                    return_value=json.dumps({"status": {"userInfo": info}}),
+                ) as command,
+                self.assertRaises(ToolError),
+            ):
+                ops.actor()
+            self.assertEqual(1, command.call_count)
+
+    def test_extra_cannot_be_discarded_to_match_review_without_extra(self):
+        self.approve()
+        self.doc["actor"] = certificate_actor()
+        self.doc["actor"].pop("extra")
+        self.save()
+        ops = runner.RealOperations(self.reviewed())
+        with (
+            patch.object(
+                runner.base,
+                "_run_text",
+                return_value=json.dumps({"status": {"userInfo": certificate_actor()}}),
+            ) as command,
+            self.assertRaises(ToolError),
+        ):
+            ops.actor()
+        self.assertEqual(1, command.call_count)
+
+    def test_receipt_binds_certificate_extra_in_all_observations_even_rehashed(self):
+        self.approve()
+        self.doc["actor"] = certificate_actor()
+        self.save()
+        result = self.invoke()
+        receipt_path = Path(result["receipt"])
+        receipt = auth.create._load_json(receipt_path)
+        auth.verify_receipt(auth.reference(receipt_path), self.sources, self.evidence)
+        for phase in ("before", "preWrite", "after"):
+            evidence_path = Path(receipt[phase]["path"])
+            original_bytes = evidence_path.read_bytes()
+            original = auth.create._load_json(evidence_path)
+            self.assertEqual(certificate_actor(), original["actor"])
+            for remove in (False, True):
+                changed = copy.deepcopy(original)
+                if remove:
+                    changed["actor"].pop("extra")
+                else:
+                    changed["actor"]["extra"][
+                        "authentication.kubernetes.io/credential-id"
+                    ] = ["X509SHA256=" + "b" * 64]
+                self.save_json(evidence_path, changed)
+                altered_receipt = copy.deepcopy(receipt)
+                altered_receipt[phase] = auth.reference(evidence_path)
+                self.save_json(receipt_path, altered_receipt)
+                with (
+                    self.subTest(phase=phase, remove=remove),
+                    self.assertRaisesRegex(
+                        ToolError, "actor/dual-egress observation differs"
+                    ),
+                ):
+                    auth.verify_receipt(
+                        auth.reference(receipt_path), self.sources, self.evidence
+                    )
+            evidence_path.write_bytes(original_bytes)
+            self.save_json(receipt_path, receipt)
+        auth.verify_receipt(auth.reference(receipt_path), self.sources, self.evidence)
 
     def test_live_egress_paths_are_independent_and_proxy_unset(self):
         self.approve()
